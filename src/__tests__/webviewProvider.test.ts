@@ -74,7 +74,8 @@ describe('DiscussionWebviewProvider', () => {
       dispose: jest.fn(),
       reveal: jest.fn(),
       onDidDispose: jest.fn(),
-      onDidChangeViewState: jest.fn()
+      onDidChangeViewState: jest.fn(),
+      visible: true
     };
 
     (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(mockWebviewPanel);
