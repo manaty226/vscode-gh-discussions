@@ -4,7 +4,6 @@
 
 import * as vscode from 'vscode';
 import insane from 'insane';
-import { RepositoryInfo } from '../models';
 
 // Re-export unified utilities
 export { sanitizeFileName } from './fileNameUtils';
@@ -60,45 +59,6 @@ export function createDiscussionUri(
 }
 
 /**
- * Get current repository information from workspace
- */
-export async function getCurrentRepository(): Promise<RepositoryInfo | null> {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-
-  if (!workspaceFolders || workspaceFolders.length === 0) {
-    return null;
-  }
-
-  const rootPath = workspaceFolders[0].uri.fsPath;
-
-  try {
-    // Try to get git remote origin URL
-    const { execSync } = require('child_process');
-    const remoteUrl = execSync('git config --get remote.origin.url', {
-      cwd: rootPath,
-      encoding: 'utf8'
-    }).trim();
-
-    const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-
-    if (match) {
-      const [, owner, name] = match;
-      return {
-        id: '', // Note: This is a placeholder. Use GitHubService.getRepositoryInfo() for full repository info including ID.
-        owner,
-        name,
-        fullName: `${owner}/${name}`,
-        hasDiscussionsEnabled: true // We'll verify this via API later
-      };
-    }
-  } catch (error) {
-    // Not a git repository or no remote origin
-  }
-
-  return null;
-}
-
-/**
  * Sanitize HTML content using insane for defense-in-depth
  * This is the same library used by VSCode core for markdown sanitization.
  * Even though GitHub sanitizes bodyHTML server-side, we add client-side sanitization as an additional security layer
@@ -141,54 +101,3 @@ export function sanitizeHtml(html: string): string {
   });
 }
 
-/**
- * Debounce function
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout;
-
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-}
-
-/**
- * Retry with exponential backoff
- */
-export async function retryWithBackoff<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
-): Promise<T> {
-  let lastError: Error;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (attempt === maxRetries) {
-        break;
-      }
-
-      const delay = baseDelay * Math.pow(2, attempt);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  throw new Error(lastError!.message || 'Operation failed after retries');
-}
-
-/**
- * Validate GitHub token format
- */
-export function isValidGitHubToken(token: string): boolean {
-  // GitHub personal access tokens start with 'ghp_' and are 40 characters long
-  // GitHub app tokens start with 'ghs_' and are 40 characters long
-  return /^gh[ps]_[A-Za-z0-9]{36}$/.test(token);
-}

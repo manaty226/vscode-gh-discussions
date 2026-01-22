@@ -261,10 +261,11 @@ export class GitHubService implements IGitHubService {
     const repoInfo = await this.getRepositoryInfo();
 
     // Lightweight query: no body, bodyHTML, comments content, or reactions
+    // Filter to OPEN discussions only (closed discussions are excluded by default)
     const query = `
       query GetDiscussionSummaries($owner: String!, $name: String!, $first: Int, $after: String, $categoryId: ID) {
         repository(owner: $owner, name: $name) {
-          discussions(first: $first, after: $after, categoryId: $categoryId) {
+          discussions(first: $first, after: $after, categoryId: $categoryId, states: [OPEN]) {
             nodes {
               id
               number
