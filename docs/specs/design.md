@@ -318,6 +318,157 @@ interface WebviewProvider {
   - 折りたたみ可能な長いコメント（「続きを読む」）
   - スティッキーヘッダー（スクロール時に固定）
 
+## カテゴリ遅延読み込みとDiscussionsページング（要件14, 15対応）
+
+### 概要
+
+大量のDiscussionsがあるリポジトリでのパフォーマンスを改善するため、カテゴリ展開時の遅延読み込みとDiscussionsのページング機能を実装。
+
+### カテゴリ状態管理
+
+```typescript
+// カテゴリのロード状態
+enum CategoryLoadState {
+  NOT_LOADED = 'not_loaded',  // 未読み込み
+  LOADING = 'loading',         // 読み込み中
+  LOADED = 'loaded',           // 読み込み完了
+  ERROR = 'error'              // エラー
+}
+
+// カテゴリごとの状態
+interface CategoryState {
+  loadState: CategoryLoadState;
+  discussions: DiscussionSummary[];
+  paginationState: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+}
+
+// ページング情報付きレスポンス
+interface DiscussionSummariesPage {
+  discussions: DiscussionSummary[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+}
+```
+
+### DiscussionsProviderの拡張
+
+```typescript
+interface DiscussionsProvider extends vscode.TreeDataProvider<DiscussionTreeItem> {
+  // 既存メソッド
+  refresh(): Promise<void>;
+  getChildren(element?: DiscussionTreeItem): Promise<DiscussionTreeItem[]>;
+  getTreeItem(element: DiscussionTreeItem): vscode.TreeItem;
+
+  // 新規メソッド（要件14, 15対応）
+  loadMoreDiscussions(categoryId: string): Promise<void>;  // 追加読み込み
+}
+```
+
+**動作フロー:**
+
+1. **初期読み込み**: カテゴリ一覧のみ取得（Discussionsは取得しない）
+2. **カテゴリ展開時**:
+   - loadStateをLOADINGに変更
+   - getDiscussionSummariesPageを呼び出してDiscussionsを取得
+   - loadStateをLOADEDに変更
+3. **追加読み込み**:
+   - 「Load more discussions...」クリック時にloadMoreDiscussionsを呼び出し
+   - endCursorを使って次のページを取得
+   - 既存のdiscussionsに追加
+
+### GitHubServiceの拡張
+
+```typescript
+interface IGitHubService {
+  // 既存メソッド...
+
+  // 新規メソッド（要件14, 15対応）
+  getDiscussionSummariesPage(
+    categoryId: string,
+    first: number,
+    after?: string
+  ): Promise<DiscussionSummariesPage>;
+}
+```
+
+**GraphQLクエリ:**
+- `states: [OPEN]`フィルタを適用（要件17対応）
+- カテゴリIDでフィルタリング
+- カーソルベースのページネーション
+
+### ツリービューの表示
+
+```
+📁 Category A (not_loaded)
+   └── (展開するとDiscussionsを取得)
+
+📂 Category B (loaded)
+   ├── Discussion 1
+   ├── Discussion 2
+   ├── Discussion 3
+   └── 📥 Load more discussions...  ← hasNextPage=trueの場合のみ表示
+
+📂 Category C (loading)
+   └── ⏳ Loading...
+```
+
+## QuickPickによるDiscussion選択（要件16対応）
+
+### 概要
+
+コマンドパレットからDiscussion操作コマンドを実行した場合、QuickPickでDiscussionを選択できる。
+
+### 対象コマンド
+
+- `github-discussions.editDiscussion` - Discussion編集
+- `github-discussions.openComments` - コメント表示
+- `github-discussions.openInBrowser` - ブラウザで開く
+
+### 実装
+
+```typescript
+async function showDiscussionQuickPick(): Promise<DiscussionSummary | undefined> {
+  const discussions = await githubService.getDiscussionSummaries();
+
+  const items = discussions.map(d => ({
+    label: d.title,
+    description: d.category.name,
+    detail: `#${d.number} by ${d.author.login}`,
+    discussion: d
+  }));
+
+  const selected = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select a discussion',
+    matchOnDescription: true,
+    matchOnDetail: true
+  });
+
+  return selected?.discussion;
+}
+
+// コマンド実装例
+async function editDiscussionCommand(item?: DiscussionTreeItem) {
+  let discussion: DiscussionSummary | undefined;
+
+  if (item) {
+    // ツリービューからの呼び出し
+    discussion = item.discussion;
+  } else {
+    // コマンドパレットからの呼び出し
+    discussion = await showDiscussionQuickPick();
+  }
+
+  if (!discussion) return;
+
+  // Discussion編集処理...
+}
+```
+
 ## データモデル
 
 ### DiscussionSummary（一覧表示用・軽量）
