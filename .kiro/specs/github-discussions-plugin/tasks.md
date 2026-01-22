@@ -220,7 +220,7 @@ VSCode上でGitHub Discussionsを管理する拡張機能をTypeScriptで実装�
 - [x] 12. 拡張機能の統合と設定
   - [x] 12.1 Extension Entry Pointの実装
     - extension.tsに全コマンド・プロバイダーの登録完了
-    - authenticate, refresh, createDiscussion, openDiscussion, editDiscussion
+    - authenticate, refresh, createDiscussion, editDiscussion, openComments, openInBrowser
     - WebviewProvider, DiscussionFileSystemProvider, DiscussionsProviderの統合
     - _要件: 全要件_
 
