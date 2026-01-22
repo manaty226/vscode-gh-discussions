@@ -1,0 +1,35 @@
+.vscode/**
+.vscode-test/**
+src/**
+!media/**
+out/**/*.test.js
+out/**/*.test.js.map
+out/__tests__/**
+.gitignore
+.yarnrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+**/*.map
+.nyc_output
+.vscode-test
+*.vsix
+**/*.ts
+node_modules/**
+# insane and its dependencies
+!node_modules/insane/**
+!node_modules/he/**
+!node_modules/assignment/**
+# @octokit/graphql and its dependencies
+!node_modules/@octokit/**
+!node_modules/universal-user-agent/**
+!node_modules/fast-content-type-parse/**
+!out/**
+.claude/**
+.kiro/**
+.github/**
+test-fixtures/**
+jest.config.js
+eslint.config.js
+.vscode-test.mjs
+package-lock.json
