@@ -76,9 +76,9 @@ Test files are located in `src/__tests__/` and follow the pattern `*.test.ts`.
 
 新機能の追加や変更を要求された場合、**必ず以下の順序で進める**:
 
-1. **`.kiro/specs/github-discussions-plugin/requirements.md`** を更新 - 要求事項を明文化
-2. **`.kiro/specs/github-discussions-plugin/design.md`** を更新 - 設計・アーキテクチャを検討
-3. **`.kiro/specs/github-discussions-plugin/tasks.md`** を更新 - 実装タスクを分解
+1. **`docs/specs/requirements.md`** を更新 - 要求事項を明文化
+2. **`docs/specs/design.md`** を更新 - 設計・アーキテクチャを検討
+3. **`docs/specs/tasks.md`** を更新 - 実装タスクを分解
 4. **ユーザーに確認** - 上記3ファイルの内容をレビューしてもらう
 5. **実装開始** - 承認後、TDDサイクルで実装
 
