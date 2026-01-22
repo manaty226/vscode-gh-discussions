@@ -92,8 +92,8 @@ export class DiscussionFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     if (type === 'discussions') {
-      const summaries = await this.githubService.getDiscussionSummaries();
-      return summaries.map((d: DiscussionSummary) => [d.number.toString(), vscode.FileType.Directory]);
+      const result = await this.githubService.getDiscussionSummaries();
+      return result.discussions.map((d: DiscussionSummary) => [d.number.toString(), vscode.FileType.Directory]);
     }
 
     if (type === 'discussion' && discussionNumber !== undefined) {

@@ -200,14 +200,14 @@ describe('GitHubService', () => {
             json: jest.fn().mockResolvedValue(mockDiscussionSummaries)
           });
 
-        const summaries = await githubService.getDiscussionSummaries();
+        const result = await githubService.getDiscussionSummaries();
 
-        expect(summaries).toHaveLength(1);
-        expect(summaries[0].title).toBe('Test Discussion');
-        expect(summaries[0].number).toBe(1);
-        expect(summaries[0].commentsCount).toBe(5);
+        expect(result.discussions).toHaveLength(1);
+        expect(result.discussions[0].title).toBe('Test Discussion');
+        expect(result.discussions[0].number).toBe(1);
+        expect(result.discussions[0].commentsCount).toBe(5);
         // Verify body is not present (lazy loading)
-        expect((summaries[0] as any).body).toBeUndefined();
+        expect((result.discussions[0] as any).body).toBeUndefined();
       });
 
       it('should handle pagination with cursor', async () => {
@@ -242,9 +242,9 @@ describe('GitHubService', () => {
             })
           });
 
-        const summaries = await githubService.getDiscussionSummaries({ first: 10, after: 'cursor123' });
+        const result = await githubService.getDiscussionSummaries({ first: 10, after: 'cursor123' });
 
-        expect(summaries).toEqual([]);
+        expect(result.discussions).toEqual([]);
       });
 
       it('should return empty array when not authenticated', async () => {
@@ -252,7 +252,127 @@ describe('GitHubService', () => {
 
         const summaries = await githubService.getDiscussionSummaries();
 
-        expect(summaries).toEqual([]);
+        expect(summaries.discussions).toEqual([]);
+      });
+
+      it('should return pageInfo with hasNextPage and endCursor', async () => {
+        const { execSync } = require('child_process');
+        execSync.mockReturnValue('origin\tgit@github.com:owner/repo.git (fetch)\n');
+
+        const mockResponse = {
+          data: {
+            repository: {
+              discussions: {
+                nodes: [
+                  {
+                    id: 'D_1',
+                    number: 1,
+                    title: 'First Discussion',
+                    url: 'https://github.com/owner/repo/discussions/1',
+                    author: { login: 'user1', avatarUrl: 'https://github.com/user1.png' },
+                    category: { id: 'C_1', name: 'General', description: '', emoji: '', isAnswerable: false },
+                    createdAt: '2024-01-01T00:00:00Z',
+                    updatedAt: '2024-01-01T00:00:00Z',
+                    isAnswered: false,
+                    comments: { totalCount: 0 }
+                  }
+                ],
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: 'cursor_page1_end'
+                }
+              }
+            }
+          }
+        };
+
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue(mockResponse)
+          });
+
+        const result = await githubService.getDiscussionSummaries();
+
+        expect(result.discussions).toHaveLength(1);
+        expect(result.pageInfo.hasNextPage).toBe(true);
+        expect(result.pageInfo.endCursor).toBe('cursor_page1_end');
+      });
+
+      it('should fetch next page using after cursor', async () => {
+        const { execSync } = require('child_process');
+        execSync.mockReturnValue('origin\tgit@github.com:owner/repo.git (fetch)\n');
+
+        const mockNextPageResponse = {
+          data: {
+            repository: {
+              discussions: {
+                nodes: [
+                  {
+                    id: 'D_21',
+                    number: 21,
+                    title: 'Discussion from page 2',
+                    url: 'https://github.com/owner/repo/discussions/21',
+                    author: { login: 'user2', avatarUrl: 'https://github.com/user2.png' },
+                    category: { id: 'C_1', name: 'General', description: '', emoji: '', isAnswerable: false },
+                    createdAt: '2024-01-02T00:00:00Z',
+                    updatedAt: '2024-01-02T00:00:00Z',
+                    isAnswered: false,
+                    comments: { totalCount: 3 }
+                  }
+                ],
+                pageInfo: {
+                  hasNextPage: false,
+                  endCursor: null
+                }
+              }
+            }
+          }
+        };
+
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue(mockNextPageResponse)
+          });
+
+        const result = await githubService.getDiscussionSummaries({ after: 'cursor_page1_end' });
+
+        // Verify cursor was passed to the API
+        const fetchCall = (global.fetch as jest.Mock).mock.calls[1];
+        const requestBody = JSON.parse(fetchCall[1].body);
+        expect(requestBody.variables.after).toBe('cursor_page1_end');
+
+        expect(result.discussions).toHaveLength(1);
+        expect(result.discussions[0].number).toBe(21);
+        expect(result.pageInfo.hasNextPage).toBe(false);
+        expect(result.pageInfo.endCursor).toBeNull();
       });
     });
 
@@ -1001,11 +1121,11 @@ describe('GitHubService', () => {
           const testService = new GitHubService(freshMockAuthService);
 
           try {
-            const summaries = await testService.getDiscussionSummaries();
+            const result = await testService.getDiscussionSummaries();
 
             // Property: Data should be preserved through transformation
-            expect(summaries).toHaveLength(1);
-            const summary = summaries[0];
+            expect(result.discussions).toHaveLength(1);
+            const summary = result.discussions[0];
 
             expect(summary.id).toBe(testData.discussionId);
             expect(summary.number).toBe(testData.discussionNumber);
@@ -1016,6 +1136,9 @@ describe('GitHubService', () => {
             expect(summary.commentsCount).toBe(testData.commentsCount);
             // Verify body is not present in summary (lazy loading)
             expect((summary as any).body).toBeUndefined();
+            // Verify pageInfo is present
+            expect(result.pageInfo).toBeDefined();
+            expect(typeof result.pageInfo.hasNextPage).toBe('boolean');
           } finally {
             testService.dispose();
           }

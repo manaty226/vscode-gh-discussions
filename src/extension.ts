@@ -3,11 +3,11 @@
  */
 
 import * as vscode from 'vscode';
-import { AuthenticationService, StorageService, GitHubService, AutoRefreshService } from './services';
-import { DiscussionsProvider } from './providers/discussionsProvider';
-import { DiscussionFileSystemProvider } from './providers/discussionFileSystemProvider';
-import { DiscussionWebviewProvider } from './providers/webviewProvider';
 import type { DiscussionSummary } from './models';
+import { DiscussionFileSystemProvider } from './providers/discussionFileSystemProvider';
+import { DiscussionsProvider } from './providers/discussionsProvider';
+import { DiscussionWebviewProvider } from './providers/webviewProvider';
+import { AuthenticationService, AutoRefreshService, GitHubService, StorageService } from './services';
 import { sanitizeFileName } from './utils/fileNameUtils';
 
 let extensionContext: vscode.ExtensionContext;
@@ -212,14 +212,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
       // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        const discussions = await githubService.getDiscussionSummaries();
-        if (discussions.length === 0) {
+        const result = await githubService.getDiscussionSummaries();
+        if (result.discussions.length === 0) {
           vscode.window.showInformationMessage('No discussions found');
           return;
         }
 
         const picked = await vscode.window.showQuickPick(
-          discussions.map(d => ({
+          result.discussions.map(d => ({
             label: `#${d.number} ${d.title}`,
             description: `${d.category.emoji} ${d.category.name}`,
             detail: `by ${d.author.login} · ${d.commentsCount} comments`,
@@ -250,14 +250,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
       // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        const discussions = await githubService.getDiscussionSummaries();
-        if (discussions.length === 0) {
+        const result = await githubService.getDiscussionSummaries();
+        if (result.discussions.length === 0) {
           vscode.window.showInformationMessage('No discussions found');
           return;
         }
 
         const picked = await vscode.window.showQuickPick(
-          discussions.map(d => ({
+          result.discussions.map(d => ({
             label: `#${d.number} ${d.title}`,
             description: `${d.category.emoji} ${d.category.name}`,
             detail: `by ${d.author.login}`,
@@ -281,6 +281,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
     }
   });
 
+  // Load more discussions command (for pagination in tree view)
+  const loadMoreDiscussionsCommand = vscode.commands.registerCommand('github-discussions.loadMoreDiscussions', async (categoryId?: string) => {
+    if (categoryId) {
+      await discussionsProvider.loadMoreForCategory(categoryId);
+    }
+  });
+
   // Open in browser command (opens the GitHub discussion in the default browser)
   const openInBrowserCommand = vscode.commands.registerCommand('github-discussions.openInBrowser', async (treeItem?: { discussionSummary?: DiscussionSummary }) => {
     try {
@@ -288,14 +295,14 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
       // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        const discussions = await githubService.getDiscussionSummaries();
-        if (discussions.length === 0) {
+        const result = await githubService.getDiscussionSummaries();
+        if (result.discussions.length === 0) {
           vscode.window.showInformationMessage('No discussions found');
           return;
         }
 
         const picked = await vscode.window.showQuickPick(
-          discussions.map(d => ({
+          result.discussions.map(d => ({
             label: `#${d.number} ${d.title}`,
             description: `${d.category.emoji} ${d.category.name}`,
             detail: `by ${d.author.login}`,
@@ -323,6 +330,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     createDiscussionCommand,
     openCommentsCommand,
     editDiscussionCommand,
+    loadMoreDiscussionsCommand,
     openInBrowserCommand
   );
 }

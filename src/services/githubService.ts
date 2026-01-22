@@ -12,6 +12,7 @@ import { CACHE_DEFAULT_TTL_MS } from '../constants';
 import {
   Discussion,
   DiscussionSummary,
+  DiscussionSummariesPage,
   DiscussionCategory,
   DiscussionQueryOptions,
   CreateDiscussionInput,
@@ -246,11 +247,15 @@ export class GitHubService implements IGitHubService {
   /**
    * Get discussion summaries from repository (lightweight, for list display)
    * Requirement 2.2: Fetch discussions metadata via GitHub API (lazy loading)
+   * Requirement 14.1, 14.5: Return DiscussionSummariesPage with pageInfo
    */
-  async getDiscussionSummaries(options?: DiscussionQueryOptions): Promise<DiscussionSummary[]> {
+  async getDiscussionSummaries(options?: DiscussionQueryOptions): Promise<DiscussionSummariesPage> {
     const session = await this.authService.getSessionSilent();
     if (!session) {
-      return [];
+      return {
+        discussions: [],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      };
     }
 
     const repoInfo = await this.getRepositoryInfo();
@@ -304,7 +309,15 @@ export class GitHubService implements IGitHubService {
       session.accessToken
     );
 
-    return response.repository.discussions.nodes.map(d => this.transformDiscussionSummary(d));
+    const discussionsData = response.repository.discussions;
+
+    return {
+      discussions: discussionsData.nodes.map(d => this.transformDiscussionSummary(d)),
+      pageInfo: {
+        hasNextPage: discussionsData.pageInfo.hasNextPage,
+        endCursor: discussionsData.pageInfo.endCursor
+      }
+    };
   }
 
   /**
