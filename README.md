@@ -56,6 +56,7 @@ This extension contributes the following settings:
 | `github-discussions.showNotifications` | `true` | Show notifications for discussion updates |
 | `github-discussions.defaultSort` | `"newest"` | Default sort order (`newest`, `oldest`, `top`) |
 | `github-discussions.defaultCategory` | `"general"` | Default category for new discussions |
+| `github-discussions.pageSize` | `10` | Number of discussions to load per page (1-100) |
 
 ### Example Configuration
 
@@ -64,7 +65,8 @@ This extension contributes the following settings:
   "github-discussions.autoRefresh": true,
   "github-discussions.refreshInterval": 600000,
   "github-discussions.defaultSort": "top",
-  "github-discussions.defaultCategory": "Q&A"
+  "github-discussions.defaultCategory": "Q&A",
+  "github-discussions.pageSize": 20
 }
 ```
 
