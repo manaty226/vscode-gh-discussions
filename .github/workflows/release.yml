@@ -14,10 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install Node.js
       uses: actions/setup-node@v4
@@ -50,3 +53,23 @@ jobs:
       run: npx vsce publish
       env:
         VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+    - name: Create version bump PR
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+        BRANCH_NAME="chore/version-bump-${{ steps.version.outputs.VERSION }}"
+        git checkout -b "$BRANCH_NAME"
+        git add package.json package-lock.json
+        git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }}"
+        git push -u origin "$BRANCH_NAME"
+
+        gh pr create \
+          --title "chore: bump version to ${{ steps.version.outputs.VERSION }}" \
+          --body "Automated version bump for release v${{ steps.version.outputs.VERSION }}" \
+          --base main
+
+        gh pr merge --auto --squash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
