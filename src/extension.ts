@@ -208,10 +208,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Called from inline action button in tree view
   const openCommentsCommand = vscode.commands.registerCommand('github-discussions.openComments', async (treeItem?: { discussionSummary?: DiscussionSummary }) => {
     try {
-      const summary = treeItem?.discussionSummary;
+      let summary = treeItem?.discussionSummary;
+
+      // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        vscode.window.showErrorMessage('No discussion selected');
-        return;
+        const discussions = await githubService.getDiscussionSummaries();
+        if (discussions.length === 0) {
+          vscode.window.showInformationMessage('No discussions found');
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+          discussions.map(d => ({
+            label: `#${d.number} ${d.title}`,
+            description: `${d.category.emoji} ${d.category.name}`,
+            detail: `by ${d.author.login} · ${d.commentsCount} comments`,
+            discussion: d
+          })),
+          { placeHolder: 'Select a discussion to view comments' }
+        );
+
+        if (!picked) {
+          return;
+        }
+        summary = picked.discussion;
       }
 
       // Fetch full discussion details (including comments)
@@ -226,10 +246,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Edit discussion command (same as open, opens the markdown file)
   const editDiscussionCommand = vscode.commands.registerCommand('github-discussions.editDiscussion', async (treeItem?: { discussionSummary?: DiscussionSummary }) => {
     try {
-      const summary = treeItem?.discussionSummary;
+      let summary = treeItem?.discussionSummary;
+
+      // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        vscode.window.showErrorMessage('No discussion selected');
-        return;
+        const discussions = await githubService.getDiscussionSummaries();
+        if (discussions.length === 0) {
+          vscode.window.showInformationMessage('No discussions found');
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+          discussions.map(d => ({
+            label: `#${d.number} ${d.title}`,
+            description: `${d.category.emoji} ${d.category.name}`,
+            detail: `by ${d.author.login}`,
+            discussion: d
+          })),
+          { placeHolder: 'Select a discussion to edit' }
+        );
+
+        if (!picked) {
+          return;
+        }
+        summary = picked.discussion;
       }
 
       const fileName = sanitizeFileName(summary.title) + '.md';
@@ -244,10 +284,30 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Open in browser command (opens the GitHub discussion in the default browser)
   const openInBrowserCommand = vscode.commands.registerCommand('github-discussions.openInBrowser', async (treeItem?: { discussionSummary?: DiscussionSummary }) => {
     try {
-      const summary = treeItem?.discussionSummary;
+      let summary = treeItem?.discussionSummary;
+
+      // If no discussion provided (e.g., from command palette), show QuickPick
       if (!summary) {
-        vscode.window.showErrorMessage('No discussion selected');
-        return;
+        const discussions = await githubService.getDiscussionSummaries();
+        if (discussions.length === 0) {
+          vscode.window.showInformationMessage('No discussions found');
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+          discussions.map(d => ({
+            label: `#${d.number} ${d.title}`,
+            description: `${d.category.emoji} ${d.category.name}`,
+            detail: `by ${d.author.login}`,
+            discussion: d
+          })),
+          { placeHolder: 'Select a discussion to open in browser' }
+        );
+
+        if (!picked) {
+          return;
+        }
+        summary = picked.discussion;
       }
 
       // Use the url field from DiscussionSummary (https URL from GitHub API)

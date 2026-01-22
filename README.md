@@ -41,7 +41,7 @@ All commands are accessible via the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift
 | `GitHub Discussions: Sign in to GitHub` | Authenticate with GitHub |
 | `GitHub Discussions: Refresh` | Manually refresh the discussions list |
 | `GitHub Discussions: Create Discussion` | Create a new discussion |
-| `GitHub Discussions: Open Discussion` | Open a discussion for editing |
+| `GitHub Discussions: Edit Discussion` | Edit a discussion |
 | `GitHub Discussions: View Comments` | View comments on a discussion |
 | `GitHub Discussions: Open in Browser` | Open the discussion on GitHub |
 
