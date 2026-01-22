@@ -112,3 +112,10 @@ Extension settings (defined in package.json contributes):
 - `github-discussions.refreshInterval` - Refresh interval in ms (default: 300000)
 - `github-discussions.defaultSort` - Sort order: newest/oldest/top
 - `github-discussions.defaultCategory` - Default category for new discussions
+- `github-discussions.pageSize` - Number of discussions to load per page (default: 10, range: 1-100)
+
+## Git/PRルール
+
+- コミットメッセージにCo-Authored-Byは不要
+- PRの説明文に「Generated with Claude Code」等の記載は不要
+- Claude Codeが協働していることを明示する必要はない
