@@ -563,6 +563,95 @@ VSCode上でGitHub Discussionsを管理する拡張機能をTypeScriptで実装�
     - 全テスト通過確認
     - 自分のコメントの編集・削除動作確認
 
+- [x] 21. カテゴリ遅延読み込みとDiscussionsページング（要件14, 15対応）
+  - [x] 21.1 データモデルの追加
+    - CategoryLoadState列挙型（not_loaded/loading/loaded/error）
+    - CategoryStateインターフェース（loadState, discussions, paginationState）
+    - DiscussionSummariesPageインターフェース（ページング情報付き）
+    - _要件: 14.5, 15.3_
+
+  - [x] 21.2 GitHubServiceの拡張
+    - getDiscussionSummariesPage()メソッドの実装
+    - カテゴリIDとカーソルによるフィルタリング
+    - states: [OPEN]フィルタの適用（要件17対応）
+    - _要件: 14.1, 14.3, 15.2, 17.3_
+
+  - [x] 21.3 DiscussionsProviderの拡張
+    - カテゴリ展開時の遅延読み込み実装
+    - カテゴリごとの状態管理（CategoryState）
+    - loadMoreDiscussionsコマンドの実装
+    - 「Load more discussions...」ツリーアイテムの追加
+    - _要件: 14.2, 14.4, 15.1, 15.4, 15.5_
+
+  - [x] 21.4 package.jsonの更新
+    - loadMoreDiscussionsコマンドの登録
+    - pageSizeの設定追加（1-100、デフォルト10）
+    - _要件: 14.6_
+
+  - [x] 21.5 テストの追加
+    - DiscussionsProviderのカテゴリ遅延読み込みテスト
+    - ページングのテスト
+    - GitHubServiceのgetDiscussionSummariesPageテスト
+    - _要件: 14.1-14.6, 15.1-15.6_
+
+  - [x] 21.6 チェックポイント - 遅延読み込み・ページング機能の確認
+    - 全テスト通過確認
+    - カテゴリ展開時の動作確認
+
+- [x] 22. QuickPickによるDiscussion選択（要件16対応）
+  - [x] 22.1 showDiscussionQuickPick関数の実装
+    - QuickPickでDiscussion一覧を表示
+    - タイトル、カテゴリ、Discussion番号、作成者を表示
+    - _要件: 16.2, 16.3_
+
+  - [x] 22.2 コマンドの更新
+    - editDiscussionコマンドの更新（引数なし時にQuickPick表示）
+    - openCommentsコマンドの更新
+    - openInBrowserコマンドの更新
+    - _要件: 16.1, 16.4, 16.5_
+
+  - [x] 22.3 テストの追加
+    - QuickPick表示のテスト
+    - コマンドパレット経由の動作テスト
+    - _要件: 16.1-16.5_
+
+  - [x] 22.4 チェックポイント - QuickPick機能の確認
+    - 全テスト通過確認
+    - コマンドパレットからの動作確認
+
+- [x] 23. OPENなDiscussionsのみ表示（要件17対応）
+  - [x] 23.1 GitHubServiceのGraphQLクエリ更新
+    - states: [OPEN]フィルタを追加
+    - _要件: 17.3_
+
+  - [x] 23.2 テストの追加
+    - OPENフィルタの動作確認テスト
+    - _要件: 17.1, 17.2_
+
+  - [x] 23.3 チェックポイント - OPENフィルタの確認
+    - 全テスト通過確認
+    - CLOSEDなDiscussionが表示されないことを確認
+
+- [x] 24. 未使用コードの削除（要件9対応）
+  - [x] 24.1 interfaces.tsの未実装インターフェース削除
+    - IDiscussionsProvider, IWebviewProvider
+    - IDiscussionFileSystemProvider, IGitHubGraphQLClient
+    - _要件: 9.4_
+
+  - [x] 24.2 utils/index.tsの未使用関数削除
+    - getCurrentRepository(), debounce()
+    - retryWithBackoff(), isValidGitHubToken()
+    - _要件: 9.4_
+
+  - [x] 24.3 graphqlClient.tsの未使用GraphQLフラグメント削除
+    - USER_FRAGMENT, CATEGORY_FRAGMENT
+    - REACTION_GROUP_FRAGMENT, COMMENT_FRAGMENT
+    - _要件: 9.4_
+
+  - [x] 24.4 チェックポイント - デッドコード削除の確認
+    - 全テスト通過確認
+    - 約135行のコード削除
+
 ## 注意事項
 
 - 各タスクは特定の要件への追跡可能性のために要件を参照
