@@ -51,6 +51,42 @@ export interface CommentsPage {
 }
 
 /**
+ * Paginated discussion summaries response
+ * Requirement 14.5: Pagination info from API response
+ */
+export interface DiscussionSummariesPage {
+  discussions: DiscussionSummary[];
+  pageInfo: PageInfo;
+}
+
+/**
+ * Pagination state for a category in tree view
+ * Requirement 14.5, 14.7: Category-specific pagination state
+ */
+export interface CategoryPaginationState {
+  hasNextPage: boolean;
+  endCursor: string | null;
+  isLoading: boolean;
+}
+
+/**
+ * Load state for category lazy loading
+ * Requirement 15: Category expansion lazy loading
+ */
+export type CategoryLoadState = 'not_loaded' | 'loading' | 'loaded' | 'error';
+
+/**
+ * Category state including load state, discussions, and pagination
+ * Requirement 15: Category expansion lazy loading
+ */
+export interface CategoryState {
+  loadState: CategoryLoadState;
+  discussions: DiscussionSummary[];
+  paginationState?: CategoryPaginationState;
+  error?: Error;
+}
+
+/**
  * Lightweight discussion model for list display (lazy loading)
  * Does not include body, bodyHTML, comments, or reactions
  */

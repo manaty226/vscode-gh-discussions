@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { IGitHubService, IAuthenticationService } from '../services/interfaces';
-import { DiscussionSummary, DiscussionCategory } from '../models';
+import { DiscussionSummary, DiscussionCategory, CategoryPaginationState, CategoryLoadState, CategoryState } from '../models';
 import { createAppError, ErrorType } from '../utils/errorUtils';
 
 export type AnsweredFilter = 'all' | 'answered' | 'unanswered';
@@ -21,15 +21,16 @@ export enum LoadingState {
 }
 
 /**
- * Tree item representing a category, discussion, or status message
+ * Tree item representing a category, discussion, load-more button, or status message
  */
 export class DiscussionTreeItem extends vscode.TreeItem {
   constructor(
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly contextValue: 'category' | 'discussion' | 'loading' | 'empty' | 'error' | 'auth-required',
+    public readonly contextValue: 'category' | 'discussion' | 'loadMore' | 'loading' | 'empty' | 'error' | 'auth-required',
     public readonly discussionSummary?: DiscussionSummary,
-    public readonly category?: DiscussionCategory
+    public readonly category?: DiscussionCategory,
+    public readonly categoryId?: string  // For loadMore item to know which category
   ) {
     super(label, collapsibleState);
 
@@ -74,6 +75,13 @@ export class DiscussionTreeItem extends vscode.TreeItem {
         command: 'github-discussions.authenticate',
         title: 'Sign In'
       };
+    } else if (contextValue === 'loadMore') {
+      this.iconPath = new vscode.ThemeIcon('ellipsis');
+      this.command = {
+        command: 'github-discussions.loadMoreDiscussions',
+        title: 'Load More',
+        arguments: [categoryId]
+      };
     }
   }
 }
@@ -87,7 +95,6 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
   readonly onDidChangeTreeData: vscode.Event<DiscussionTreeItem | undefined | null | void> =
     this._onDidChangeTreeData.event;
 
-  private discussionSummaries: DiscussionSummary[] = [];
   private categories: DiscussionCategory[] = [];
   private loadingState: LoadingState = LoadingState.IDLE;
   private lastError: Error | undefined;
@@ -96,6 +103,9 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
   private searchQuery = '';
   private categoryFilter: string[] = [];
   private answeredFilter: AnsweredFilter = 'all';
+
+  // Category-specific state for lazy loading (Requirement 15)
+  private categoryStates: Map<string, CategoryState> = new Map();
 
   constructor(
     private githubService: IGitHubService,
@@ -108,6 +118,7 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
   refresh(): void {
     this.loadingState = LoadingState.IDLE;
     this.lastError = undefined;
+    this.categoryStates.clear();
     this._onDidChangeTreeData.fire();
   }
 
@@ -205,8 +216,41 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
     }
 
     if (element.contextValue === 'category' && element.category) {
-      // Category level - return discussions in this category
-      const items = this.getDiscussionItems(element.category.id);
+      // Category level - lazy load discussions for this category (Requirement 15)
+      const categoryId = element.category.id;
+
+      // Check if we need to load discussions for this category
+      const categoryState = this.categoryStates.get(categoryId);
+
+      if (!categoryState || categoryState.loadState === 'not_loaded') {
+        // Start loading discussions for this category
+        await this.loadCategoryDiscussions(categoryId);
+      }
+
+      // Get current state after potential load
+      const currentState = this.categoryStates.get(categoryId);
+
+      // Handle loading state
+      if (currentState?.loadState === 'loading') {
+        return [new DiscussionTreeItem(
+          'Loading...',
+          vscode.TreeItemCollapsibleState.None,
+          'loading'
+        )];
+      }
+
+      // Handle error state
+      if (currentState?.loadState === 'error') {
+        return [new DiscussionTreeItem(
+          `Error loading discussions (click to retry)`,
+          vscode.TreeItemCollapsibleState.None,
+          'error'
+        )];
+      }
+
+      // Get discussion items from category state
+      const items = this.getDiscussionItems(categoryId);
+
       if (items.length === 0) {
         return [new DiscussionTreeItem(
           'No discussions in this category',
@@ -214,14 +258,34 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
           'empty'
         )];
       }
+
+      // Add "Load More" item if there are more discussions to load (Requirement 14.2)
+      const paginationState = currentState?.paginationState;
+      if (paginationState?.hasNextPage) {
+        const loadMoreLabel = paginationState.isLoading ? 'Loading...' : 'Load more discussions...';
+        items.push(new DiscussionTreeItem(
+          loadMoreLabel,
+          vscode.TreeItemCollapsibleState.None,
+          'loadMore',
+          undefined,
+          undefined,
+          categoryId
+        ));
+      }
+
       return items;
+    }
+
+    // Handle loadMore item - it should not have children
+    if (element?.contextValue === 'loadMore') {
+      return [];
     }
 
     return [];
   }
 
   /**
-   * Ensure data is loaded
+   * Ensure categories are loaded (Requirement 15.1: Only load categories initially)
    */
   private async ensureLoaded(): Promise<void> {
     if (this.loadingState === LoadingState.LOADED || this.loadingState === LoadingState.LOADING) {
@@ -236,7 +300,6 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
       if (!isAuthenticated) {
         const session = await this.authService.getSession();
         if (!session) {
-          this.discussionSummaries = [];
           this.categories = [];
           this.loadingState = LoadingState.ERROR;
           this.lastError = new Error('Not authenticated');
@@ -244,22 +307,81 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
         }
       }
 
-      const [summaries, categories] = await Promise.all([
-        this.githubService.getDiscussionSummaries(),
-        this.githubService.getDiscussionCategories()
-      ]);
+      // Only load categories, not discussions (Requirement 15.1)
+      const categories = await this.githubService.getDiscussionCategories();
 
-      this.discussionSummaries = summaries;
+      // Initialize category states as not_loaded (Requirement 15)
+      for (const category of categories) {
+        if (!this.categoryStates.has(category.id)) {
+          this.categoryStates.set(category.id, {
+            loadState: 'not_loaded',
+            discussions: []
+          });
+        }
+      }
+
       this.categories = categories;
       this.loadingState = LoadingState.LOADED;
       this.lastError = undefined;
     } catch (error) {
-      console.error('Failed to load discussions:', error);
-      this.discussionSummaries = [];
+      console.error('Failed to load categories:', error);
       this.categories = [];
       this.loadingState = LoadingState.ERROR;
       this.lastError = error instanceof Error ? error : new Error(String(error));
     }
+  }
+
+  /**
+   * Load discussions for a specific category (Requirement 15.2)
+   */
+  private async loadCategoryDiscussions(categoryId: string): Promise<void> {
+    const currentState = this.categoryStates.get(categoryId);
+
+    // Don't reload if already loaded or currently loading
+    if (currentState?.loadState === 'loaded' || currentState?.loadState === 'loading') {
+      return;
+    }
+
+    // Set loading state
+    this.categoryStates.set(categoryId, {
+      loadState: 'loading',
+      discussions: currentState?.discussions || []
+    });
+    this._onDidChangeTreeData.fire();
+
+    try {
+      const pageSize = vscode.workspace.getConfiguration('github-discussions').get<number>('pageSize', 20);
+      const result = await this.githubService.getDiscussionSummaries({
+        first: pageSize,
+        categoryId: categoryId
+      });
+
+      this.categoryStates.set(categoryId, {
+        loadState: 'loaded',
+        discussions: result.discussions,
+        paginationState: {
+          hasNextPage: result.pageInfo.hasNextPage,
+          endCursor: result.pageInfo.endCursor,
+          isLoading: false
+        }
+      });
+    } catch (error) {
+      console.error(`Failed to load discussions for category ${categoryId}:`, error);
+      this.categoryStates.set(categoryId, {
+        loadState: 'error',
+        discussions: [],
+        error: error instanceof Error ? error : new Error(String(error))
+      });
+    }
+
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Get category load state (for testing)
+   */
+  getCategoryLoadState(categoryId: string): CategoryLoadState {
+    return this.categoryStates.get(categoryId)?.loadState || 'not_loaded';
   }
 
   /**
@@ -290,9 +412,9 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
    * Get discussion tree items for a category
    */
   private getDiscussionItems(categoryId: string): DiscussionTreeItem[] {
-    let filteredSummaries = this.discussionSummaries.filter((d: DiscussionSummary) =>
-      d.category.id === categoryId
-    );
+    // Get discussions from category state (lazy loaded)
+    const categoryState = this.categoryStates.get(categoryId);
+    let filteredSummaries = categoryState?.discussions || [];
 
     // Apply search filter (title only - body not available in summary)
     if (this.searchQuery) {
@@ -317,6 +439,55 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
         undefined
       )
     );
+  }
+
+  /**
+   * Load more discussions for a specific category
+   * Requirement 14.3: Load next page using endCursor
+   */
+  async loadMoreForCategory(categoryId: string): Promise<void> {
+    const categoryState = this.categoryStates.get(categoryId);
+    const paginationState = categoryState?.paginationState;
+    if (!paginationState || !paginationState.hasNextPage || paginationState.isLoading) {
+      return;
+    }
+
+    // Set loading state (Requirement 14.6)
+    paginationState.isLoading = true;
+    this._onDidChangeTreeData.fire();
+
+    try {
+      const pageSize = vscode.workspace.getConfiguration('github-discussions').get<number>('pageSize', 20);
+      const result = await this.githubService.getDiscussionSummaries({
+        first: pageSize,
+        after: paginationState.endCursor ?? undefined,
+        categoryId: categoryId
+      });
+
+      // Add new discussions to existing list in category state
+      const existingDiscussions = categoryState?.discussions || [];
+      this.categoryStates.set(categoryId, {
+        loadState: 'loaded',
+        discussions: [...existingDiscussions, ...result.discussions],
+        paginationState: {
+          hasNextPage: result.pageInfo.hasNextPage,
+          endCursor: result.pageInfo.endCursor,
+          isLoading: false
+        }
+      });
+    } catch (error) {
+      console.error('Failed to load more discussions:', error);
+      paginationState.isLoading = false;
+    }
+
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Get pagination state for a category (for testing)
+   */
+  getCategoryPaginationState(categoryId: string): CategoryPaginationState | undefined {
+    return this.categoryStates.get(categoryId)?.paginationState;
   }
 
   /**

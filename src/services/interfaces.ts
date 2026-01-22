@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import {
   Discussion,
-  DiscussionSummary,
+  DiscussionSummariesPage,
   DiscussionCategory,
   DiscussionQueryOptions,
   CreateDiscussionInput,
@@ -27,7 +27,7 @@ export interface IAuthenticationService {
 
 export interface IGitHubService {
   getRepositoryInfo(): Promise<RepositoryInfo>;
-  getDiscussionSummaries(options?: DiscussionQueryOptions): Promise<DiscussionSummary[]>;
+  getDiscussionSummaries(options?: DiscussionQueryOptions): Promise<DiscussionSummariesPage>;
   getDiscussion(number: number): Promise<Discussion>;
   getDiscussionComments(discussionNumber: number, after?: string): Promise<CommentsPage>;
   createDiscussion(input: CreateDiscussionInput): Promise<Discussion>;
@@ -59,4 +59,3 @@ export interface ICacheService {
   has(key: string): boolean;
   getOrSet<T>(key: string, factory: () => Promise<T>, ttl?: number): Promise<T>;
 }
-

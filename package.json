@@ -59,6 +59,12 @@
         "title": "Open in Browser",
         "category": "GitHub Discussions",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "github-discussions.loadMoreDiscussions",
+        "title": "Load More Discussions",
+        "category": "GitHub Discussions",
+        "icon": "$(ellipsis)"
       }
     ],
     "views": {
@@ -93,6 +99,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "github-discussions.loadMoreDiscussions",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "github-discussions.refresh",
@@ -150,6 +162,13 @@
           "type": "string",
           "default": "general",
           "description": "Default category for new discussions"
+        },
+        "github-discussions.pageSize": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Number of discussions to load per page (default: 1 for testing pagination)"
         }
       }
     }

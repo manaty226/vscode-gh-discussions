@@ -8,7 +8,7 @@ import * as fc from 'fast-check';
 import { DiscussionFileSystemProvider } from '../providers/discussionFileSystemProvider';
 import { GitHubService } from '../services/githubService';
 import { CacheService } from '../services/cacheService';
-import { Discussion, DiscussionSummary, DiscussionCategory, User } from '../models';
+import { Discussion, DiscussionSummary, DiscussionSummariesPage, DiscussionCategory, User } from '../models';
 
 // Mock vscode FileType
 const FileType = {
@@ -75,7 +75,10 @@ describe('DiscussionFileSystemProvider', () => {
         fullName: 'owner/repo',
         hasDiscussionsEnabled: true
       }),
-      getDiscussionSummaries: jest.fn().mockResolvedValue([mockDiscussionSummary]),
+      getDiscussionSummaries: jest.fn().mockResolvedValue({
+        discussions: [mockDiscussionSummary],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      } as DiscussionSummariesPage),
       getDiscussion: jest.fn().mockResolvedValue(mockDiscussion),
       createDiscussion: jest.fn().mockResolvedValue(mockDiscussion),
       updateDiscussion: jest.fn().mockResolvedValue(mockDiscussion),
