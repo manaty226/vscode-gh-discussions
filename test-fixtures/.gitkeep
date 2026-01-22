@@ -1,0 +1,2 @@
+# This file ensures the test-fixtures directory is included in Git
+# The directory is used as a workspace folder for E2E tests
