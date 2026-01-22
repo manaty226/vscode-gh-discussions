@@ -1,0 +1,201 @@
+{
+  "name": "vscode-gh-discussions",
+  "displayName": "GitHub Discussions",
+  "description": "View and edit GitHub Discussions directly in VS Code using Virtual File System",
+  "version": "2.0.0",
+  "publisher": "github-discussions",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "keywords": [
+    "github",
+    "discussions",
+    "git",
+    "collaboration",
+    "markdown"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "github-discussions.authenticate",
+        "title": "Sign in to GitHub",
+        "category": "GitHub Discussions",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "github-discussions.refresh",
+        "title": "Refresh",
+        "category": "GitHub Discussions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "github-discussions.createDiscussion",
+        "title": "Create Discussion",
+        "category": "GitHub Discussions",
+        "icon": "$(add)"
+      },
+      {
+        "command": "github-discussions.editDiscussion",
+        "title": "Edit Discussion",
+        "category": "GitHub Discussions",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "github-discussions.openComments",
+        "title": "View Comments",
+        "category": "GitHub Discussions",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "github-discussions.openInBrowser",
+        "title": "Open in Browser",
+        "category": "GitHub Discussions",
+        "icon": "$(link-external)"
+      }
+    ],
+    "views": {
+      "github-discussions-container": [
+        {
+          "id": "github-discussions",
+          "name": "GitHub Discussions",
+          "contextualTitle": "GitHub Discussions",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "github-discussions-container",
+          "title": "GitHub Discussions",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "github-discussions",
+        "contents": "No GitHub repository with discussions found in this workspace.\n[Open Folder](command:workbench.action.files.openFolder)\n[Refresh](command:github-discussions.refresh)\nTo learn more about GitHub Discussions [read our docs](https://docs.github.com/en/discussions).",
+        "when": "github-discussions:noRepo"
+      },
+      {
+        "view": "github-discussions",
+        "contents": "You are not signed in to GitHub.\n[Sign in to GitHub](command:github-discussions.authenticate)\nTo learn more about GitHub Discussions [read our docs](https://docs.github.com/en/discussions).",
+        "when": "!github-discussions:authenticated"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "github-discussions.refresh",
+          "when": "view == github-discussions && github-discussions:authenticated",
+          "group": "navigation"
+        },
+        {
+          "command": "github-discussions.createDiscussion",
+          "when": "view == github-discussions && github-discussions:authenticated",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "github-discussions.openComments",
+          "when": "view == github-discussions && viewItem == discussion",
+          "group": "inline@1"
+        },
+        {
+          "command": "github-discussions.openInBrowser",
+          "when": "view == github-discussions && viewItem == discussion",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GitHub Discussions",
+      "properties": {
+        "github-discussions.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh discussions when the extension activates"
+        },
+        "github-discussions.refreshInterval": {
+          "type": "number",
+          "default": 300000,
+          "description": "Auto-refresh interval in milliseconds (default: 5 minutes)"
+        },
+        "github-discussions.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for discussion updates"
+        },
+        "github-discussions.defaultSort": {
+          "type": "string",
+          "enum": [
+            "newest",
+            "oldest",
+            "top"
+          ],
+          "default": "newest",
+          "description": "Default sort order for discussions"
+        },
+        "github-discussions.defaultCategory": {
+          "type": "string",
+          "default": "general",
+          "description": "Default category for new discussions"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "vscode:prepublish": "npm run compile && npm run build:mermaid",
+    "compile": "tsc -p ./",
+    "build:mermaid": "node esbuild.mermaid.js",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "lint:fix": "eslint src --ext ts --fix",
+    "package": "npm run build:mermaid && vsce package",
+    "publish": "vsce publish"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manaty226/vscode-gh-discussions.git"
+  },
+  "author": "manaty226",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/manaty226/vscode-gh-discussions/issues"
+  },
+  "homepage": "https://github.com/manaty226/vscode-gh-discussions#readme",
+  "devDependencies": {
+    "@types/insane": "^1.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.10.0",
+    "@types/vscode": "^1.105.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.0.0",
+    "fast-check": "^3.22.0",
+    "jest": "^30.2.0",
+    "mermaid": "^11.4.0",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@octokit/graphql": "^8.1.1",
+    "@vscode/vsce": "^3.7.0",
+    "insane": "^2.6.2"
+  }
+}
