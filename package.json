@@ -2,7 +2,7 @@
   "name": "vscode-gh-discussions",
   "displayName": "GitHub Discussions",
   "description": "View and edit GitHub Discussions directly in VS Code using Virtual File System",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "manaty226",
   "icon": "icon.png",
   "engines": {
