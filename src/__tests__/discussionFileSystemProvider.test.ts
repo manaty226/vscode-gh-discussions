@@ -257,6 +257,47 @@ describe('DiscussionFileSystemProvider', () => {
         // Verify fire was called
         expect(fireMethod).toHaveBeenCalled();
       });
+
+      it('should show progress notification while saving', async () => {
+        const uri = vscode.Uri.parse('ghd:///discussions/1/Test.md');
+        const newContent = new TextEncoder().encode('Body');
+
+        await provider.writeFile(uri, newContent, { create: false, overwrite: true });
+
+        expect(vscode.window.withProgress).toHaveBeenCalledWith(
+          expect.objectContaining({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Saving discussion to GitHub...',
+            cancellable: false
+          }),
+          expect.any(Function)
+        );
+      });
+
+      it('should show progress notification when creating new discussion', async () => {
+        const uri = vscode.Uri.parse('ghd:///discussions/new/New%20Discussion.md');
+        const newContent = new TextEncoder().encode('New body');
+
+        provider.setPendingCategory(uri.path, 'C_1');
+
+        mockGitHubService.createDiscussion.mockResolvedValue({
+          ...mockDiscussion,
+          id: 'D_new',
+          number: 2,
+          title: 'New Discussion',
+          body: 'New body'
+        });
+
+        await provider.writeFile(uri, newContent, { create: true, overwrite: false });
+
+        expect(vscode.window.withProgress).toHaveBeenCalledWith(
+          expect.objectContaining({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Saving discussion to GitHub...'
+          }),
+          expect.any(Function)
+        );
+      });
     });
 
     describe('createDirectory', () => {
