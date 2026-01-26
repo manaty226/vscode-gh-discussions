@@ -652,6 +652,22 @@ VSCode上でGitHub Discussionsを管理する拡張機能をTypeScriptで実装�
     - 全テスト通過確認
     - 約135行のコード削除
 
+- [x] 25. 保存中インジケーターの実装（要件18対応）
+  - [x] 25.1 DiscussionFileSystemProvider.writeFileの更新
+    - vscode.window.withProgressでラップ
+    - ProgressLocation.Notificationで通知エリアに表示
+    - "Saving discussion to GitHub..."メッセージ
+    - _要件: 18.1, 18.2, 18.3, 18.4_
+
+  - [x] 25.2 テストの追加
+    - withProgressが呼び出されることを検証（2テスト追加）
+    - **313テスト全て通過**
+    - _要件: 18.1-18.4_
+
+  - [x] 25.3 チェックポイント - 保存中インジケーターの確認
+    - 全テスト通過確認
+    - Cmd+S時に通知が表示されることを確認
+
 ## 注意事項
 
 - 各タスクは特定の要件への追跡可能性のために要件を参照

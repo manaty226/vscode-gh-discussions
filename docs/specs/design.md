@@ -1441,3 +1441,42 @@ export class DiscussionWebviewProvider {
 2. **CSP**: nonce-basedでバンドルスクリプトのみ許可
 3. **サニタイゼーション**: Mermaid内蔵のDOMPurifyによる出力サニタイズ
 4. **ネットワーク制限**: 外部リソースの読み込みを禁止
+
+## 保存中インジケーター設計（要件18対応）
+
+### 概要
+
+Discussion保存時にユーザーに進捗を通知する機能。`vscode.window.withProgress` APIを使用して通知エリアにプログレスインジケーターを表示する。
+
+### 実装方針
+
+`DiscussionFileSystemProvider.writeFile`メソッド内で`withProgress`を使用し、既存の保存処理をラップする。
+
+```typescript
+async writeFile(
+  uri: vscode.Uri,
+  content: Uint8Array,
+  _options: { create: boolean; overwrite: boolean }
+): Promise<void> {
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: "Saving discussion to GitHub...",
+    cancellable: false
+  }, async () => {
+    // 既存の保存処理
+  });
+}
+```
+
+### 表示仕様
+
+| 状態 | 表示内容 |
+|------|----------|
+| 保存中 | 通知エリアにスピナー + "Saving discussion to GitHub..." |
+| 完了 | 通知が自動的に消える |
+| エラー | 既存のエラーハンドリングでエラーメッセージを表示 |
+
+### 対象操作
+
+1. 既存Discussionの更新（`Cmd+S`等でファイル保存時）
+2. 新規Discussionの作成（新規ファイル保存時）

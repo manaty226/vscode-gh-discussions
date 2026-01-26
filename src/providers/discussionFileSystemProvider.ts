@@ -180,43 +180,49 @@ export class DiscussionFileSystemProvider implements vscode.FileSystemProvider {
     // タイトルはファイル名から取得（.md を除去、URLデコード済み）
     const title = decodedFileName.slice(0, -3);
 
-    if (discussionNumber === undefined || isNaN(discussionNumber)) {
-      // New discussion
-      const repoInfo = await this.githubService.getRepositoryInfo();
-      const categories = await this.githubService.getDiscussionCategories();
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Saving discussion to GitHub...",
+      cancellable: false
+    }, async () => {
+      if (discussionNumber === undefined || isNaN(discussionNumber)) {
+        // New discussion
+        const repoInfo = await this.githubService.getRepositoryInfo();
+        const categories = await this.githubService.getDiscussionCategories();
 
-      // Get category from pending discussions (set by extension when creating)
-      const pending = this.pendingNewDiscussions.get(uri.path);
-      const category = pending?.categoryId
-        ? categories.find(c => c.id === pending.categoryId)
-        : categories[0];
+        // Get category from pending discussions (set by extension when creating)
+        const pending = this.pendingNewDiscussions.get(uri.path);
+        const category = pending?.categoryId
+          ? categories.find(c => c.id === pending.categoryId)
+          : categories[0];
 
-      if (!category) {
-        throw new Error('No discussion category available');
+        if (!category) {
+          throw new Error('No discussion category available');
+        }
+
+        const newDiscussion = await this.githubService.createDiscussion({
+          repositoryId: repoInfo.id,
+          categoryId: category.id,
+          title,
+          body
+        });
+
+        // Cache the new discussion and clean up pending
+        this.setDiscussionCache(newDiscussion.number, newDiscussion);
+        this.pendingNewDiscussions.delete(uri.path);
+      } else {
+        // Update existing discussion
+        const discussion = await this.getDiscussion(discussionNumber);
+
+        const updatedDiscussion = await this.githubService.updateDiscussion(discussion.id, {
+          title,
+          body
+        });
+
+        // Update cache
+        this.setDiscussionCache(discussionNumber, updatedDiscussion);
       }
-
-      const newDiscussion = await this.githubService.createDiscussion({
-        repositoryId: repoInfo.id,
-        categoryId: category.id,
-        title,
-        body
-      });
-
-      // Cache the new discussion and clean up pending
-      this.setDiscussionCache(newDiscussion.number, newDiscussion);
-      this.pendingNewDiscussions.delete(uri.path);
-    } else {
-      // Update existing discussion
-      const discussion = await this.getDiscussion(discussionNumber);
-
-      const updatedDiscussion = await this.githubService.updateDiscussion(discussion.id, {
-        title,
-        body
-      });
-
-      // Update cache
-      this.setDiscussionCache(discussionNumber, updatedDiscussion);
-    }
+    });
 
     // Fire change event
     this._onDidChangeFile.fire([{

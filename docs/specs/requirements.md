@@ -240,3 +240,14 @@ VSCode上でGitHub Discussionsを効率的に閲覧・編集・管理できる�
 2. CLOSEDなDiscussionsはツリービューに表示しない
 3. GraphQLクエリにstates: [OPEN]フィルタを適用する
 
+### 要件18
+
+**ユーザーストーリー:** 開発者として、Discussionの保存中に進捗を確認したい。そうすることで、操作が進行中であることを把握できる。
+
+#### 受け入れ基準
+
+1. Discussion保存時（Cmd+S等）に通知エリアに「Saving discussion to GitHub...」と表示する
+2. 保存処理中はプログレスインジケーターを表示する
+3. 保存が完了すると通知が自動的に消える
+4. 新規Discussion作成時も同様に保存中の進捗を表示する
+
