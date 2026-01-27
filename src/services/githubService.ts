@@ -8,7 +8,12 @@ import {
   IAuthenticationService,
   ICacheService
 } from './interfaces';
-import { CACHE_DEFAULT_TTL_MS } from '../constants';
+import {
+  CACHE_DEFAULT_TTL_MS,
+  MENTIONABLE_USERS_CACHE_TTL_MS,
+  CACHE_KEY_MENTIONABLE_USERS,
+  CACHE_KEY_DISCUSSION_PARTICIPANTS
+} from '../constants';
 import {
   Discussion,
   DiscussionSummary,
@@ -22,7 +27,9 @@ import {
   DiscussionComment,
   Reaction,
   CommentsPage,
-  PageInfo
+  PageInfo,
+  MentionableUser,
+  MentionSource
 } from '../models';
 import { IGitRemoteParser, GitRemoteParser } from '../infrastructure/gitRemoteParser';
 import { IGraphQLClient, GraphQLClient } from '../infrastructure/graphqlClient';
@@ -817,6 +824,326 @@ export class GitHubService implements IGitHubService {
       { commentId },
       session.accessToken
     );
+  }
+
+  /**
+   * Get mentionable users for @mention suggestions
+   * Requirement 19: Mention functionality
+   * Priority: Discussion participants > Collaborators
+   * Note: Org members are fetched separately via searchOrganizationMembers for performance
+   */
+  async getMentionableUsers(discussionNumber?: number): Promise<MentionableUser[]> {
+    const session = await this.authService.getSessionSilent();
+    if (!session) {
+      return [];
+    }
+
+    // Build cache key based on repository and discussion number
+    const repoInfo = await this.getRepositoryInfo();
+    const cacheKey = discussionNumber !== undefined
+      ? `${CACHE_KEY_MENTIONABLE_USERS}:${repoInfo.owner}/${repoInfo.name}:${discussionNumber}`
+      : `${CACHE_KEY_MENTIONABLE_USERS}:${repoInfo.owner}/${repoInfo.name}`;
+
+    // Check cache first
+    const cached = this.cacheService?.get<MentionableUser[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const users = new Map<string, MentionableUser>();
+
+    try {
+      // 1. Get discussion participants if discussionNumber is provided (highest priority)
+      if (discussionNumber !== undefined) {
+        const participants = await this.getDiscussionParticipants(discussionNumber, session.accessToken);
+        for (const user of participants) {
+          users.set(user.login, user);
+        }
+      }
+
+      // 2. Get repository collaborators
+      const collaborators = await this.getRepositoryCollaborators(repoInfo, session.accessToken);
+      for (const user of collaborators) {
+        // Only add if not already present (preserve higher priority)
+        if (!users.has(user.login)) {
+          users.set(user.login, user);
+        }
+      }
+
+      // Note: Organization members are NOT fetched here for performance.
+      // Use searchOrganizationMembers() with a query to search org members lazily.
+
+    } catch (error) {
+      // Return what we have so far on error
+      console.error('Error fetching mentionable users:', error);
+    }
+
+    // Sort by priority and return
+    const result = this.sortUsersByPriority(Array.from(users.values()));
+
+    // Cache the result
+    this.cacheService?.set(cacheKey, result, MENTIONABLE_USERS_CACHE_TTL_MS);
+
+    return result;
+  }
+
+  /**
+   * Search organization members by query string
+   * Requirement 19: Lazy loading of org members for performance
+   * Only searches when user types characters after @
+   */
+  async searchOrganizationMembers(query: string): Promise<MentionableUser[]> {
+    if (!query || query.length < 1) {
+      return [];
+    }
+
+    const session = await this.authService.getSessionSilent();
+    if (!session) {
+      return [];
+    }
+
+    const repoInfo = await this.getRepositoryInfo();
+
+    // Check if this is an organization repository
+    const isOrg = await this.isOrganizationRepository(repoInfo, session.accessToken);
+    if (!isOrg) {
+      return [];
+    }
+
+    // Search organization members using GitHub Search API
+    const searchUrl = `https://api.github.com/search/users?q=${encodeURIComponent(query)}+org:${encodeURIComponent(repoInfo.owner)}&per_page=20`;
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        Accept: 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    interface SearchResponse {
+      items: Array<{
+        login: string;
+        avatar_url: string;
+      }>;
+    }
+
+    const data = (await response.json()) as SearchResponse;
+
+    return data.items.map(user => ({
+      login: user.login,
+      name: null,
+      avatarUrl: user.avatar_url,
+      source: MentionSource.ORG_MEMBER
+    }));
+  }
+
+  /**
+   * Check if the repository owner is an organization
+   */
+  private async isOrganizationRepository(
+    repoInfo: RepositoryInfo,
+    accessToken: string
+  ): Promise<boolean> {
+    const cacheKey = `is-org:${repoInfo.owner}`;
+    const cached = this.cacheService?.get<boolean>(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const ownerUrl = `https://api.github.com/users/${repoInfo.owner}`;
+    const ownerResponse = await fetch(ownerUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!ownerResponse.ok) {
+      return false;
+    }
+
+    interface OwnerResponse {
+      type: string;
+    }
+
+    const ownerData = (await ownerResponse.json()) as OwnerResponse;
+    const isOrg = ownerData.type === 'Organization';
+
+    // Cache the result for 1 hour (org type rarely changes)
+    this.cacheService?.set(cacheKey, isOrg, 60 * 60 * 1000);
+
+    return isOrg;
+  }
+
+  /**
+   * Get discussion participants (author + commenters)
+   */
+  private async getDiscussionParticipants(
+    discussionNumber: number,
+    accessToken: string
+  ): Promise<MentionableUser[]> {
+    const repoInfo = await this.getRepositoryInfo();
+
+    const query = `
+      query GetDiscussionParticipants($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          discussion(number: $number) {
+            author {
+              login
+              ... on User {
+                name
+                avatarUrl
+              }
+            }
+            comments(first: 100) {
+              nodes {
+                author {
+                  login
+                  ... on User {
+                    name
+                    avatarUrl
+                  }
+                }
+                replies(first: 100) {
+                  nodes {
+                    author {
+                      login
+                      ... on User {
+                        name
+                        avatarUrl
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    interface ParticipantsResponse {
+      repository: {
+        discussion: {
+          author: { login: string; name?: string; avatarUrl?: string };
+          comments: {
+            nodes: Array<{
+              author: { login: string; name?: string; avatarUrl?: string };
+              replies: {
+                nodes: Array<{
+                  author: { login: string; name?: string; avatarUrl?: string };
+                }>;
+              };
+            }>;
+          };
+        };
+      };
+    }
+
+    const response = await this.graphqlClient.query<ParticipantsResponse>(
+      query,
+      {
+        owner: repoInfo.owner,
+        name: repoInfo.name,
+        number: discussionNumber
+      },
+      accessToken
+    );
+
+    const users: MentionableUser[] = [];
+    const seen = new Set<string>();
+
+    const addUser = (author: { login: string; name?: string; avatarUrl?: string }) => {
+      if (author && !seen.has(author.login)) {
+        seen.add(author.login);
+        users.push({
+          login: author.login,
+          name: author.name ?? null,
+          avatarUrl: author.avatarUrl ?? '',
+          source: MentionSource.DISCUSSION_PARTICIPANT
+        });
+      }
+    };
+
+    const discussion = response.repository.discussion;
+    addUser(discussion.author);
+
+    for (const comment of discussion.comments.nodes) {
+      addUser(comment.author);
+      for (const reply of comment.replies.nodes) {
+        addUser(reply.author);
+      }
+    }
+
+    return users;
+  }
+
+  /**
+   * Get repository collaborators via REST API
+   */
+  private async getRepositoryCollaborators(
+    repoInfo: RepositoryInfo,
+    accessToken: string
+  ): Promise<MentionableUser[]> {
+    interface CollaboratorResponse {
+      login: string;
+      name?: string;
+      avatar_url: string;
+    }
+
+    const allCollaborators: CollaboratorResponse[] = [];
+    let page = 1;
+    const perPage = 100; // Maximum allowed by GitHub API
+
+    while (true) {
+      const url = `https://api.github.com/repos/${repoInfo.owner}/${repoInfo.name}/collaborators?per_page=${perPage}&page=${page}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/vnd.github.v3+json'
+        }
+      });
+
+      if (!response.ok) {
+        // Permission denied or other error - return what we have so far
+        break;
+      }
+
+      const collaborators = (await response.json()) as CollaboratorResponse[];
+      allCollaborators.push(...collaborators);
+
+      // If we got fewer than perPage, we've reached the end
+      if (collaborators.length < perPage) {
+        break;
+      }
+
+      page++;
+    }
+
+    return allCollaborators.map(c => ({
+      login: c.login,
+      name: c.name ?? null,
+      avatarUrl: c.avatar_url,
+      source: MentionSource.COLLABORATOR
+    }));
+  }
+
+  /**
+   * Sort users by priority: participant > collaborator > org_member
+   */
+  private sortUsersByPriority(users: MentionableUser[]): MentionableUser[] {
+    const priorityOrder = {
+      [MentionSource.DISCUSSION_PARTICIPANT]: 0,
+      [MentionSource.COLLABORATOR]: 1,
+      [MentionSource.ORG_MEMBER]: 2
+    };
+
+    return users.sort((a, b) => priorityOrder[a.source] - priorityOrder[b.source]);
   }
 
   /**
