@@ -747,10 +747,16 @@ export class DiscussionWebviewProvider {
   <title>Comments: ${escapedTitle}</title>
   <style>
     :root {
-      --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-      --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.25);
+      --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
       --card-radius: 12px;
       --transition-speed: 0.2s;
+    }
+
+    /* Light theme adjustments */
+    .vscode-light {
+      --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
     }
 
     * {
@@ -764,7 +770,7 @@ export class DiscussionWebviewProvider {
       padding: 0;
       margin: 0;
       line-height: 1.7;
-      font-size: 14px;
+      font-size: 15px;
       letter-spacing: 0.02em;
     }
 
@@ -846,19 +852,21 @@ export class DiscussionWebviewProvider {
       font-size: 12px;
     }
 
-    /* Comment Card - Modern Design */
+    /* Comment Card - Modern Design with improved dark mode visibility */
     .comment-card {
-      background: var(--vscode-editor-inactiveSelectionBackground);
+      background: var(--vscode-editor-inactiveSelectionBackground, rgba(255, 255, 255, 0.05));
       border-radius: var(--card-radius);
       padding: 16px;
       margin-bottom: 16px;
       box-shadow: var(--card-shadow);
       transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
     }
 
     .comment-card:hover {
       transform: translateY(-2px);
       box-shadow: var(--card-shadow-hover);
+      border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
     }
 
     .comment-header {
@@ -890,11 +898,11 @@ export class DiscussionWebviewProvider {
     .author {
       font-weight: 600;
       color: var(--vscode-foreground);
-      font-size: 14px;
+      font-size: 15px;
     }
 
     .op-badge {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #7c8aff 0%, #9b6dff 100%);
       color: white;
       padding: 2px 8px;
       border-radius: 10px;
@@ -902,16 +910,17 @@ export class DiscussionWebviewProvider {
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
     }
 
     .timestamp {
-      color: var(--vscode-descriptionForeground);
-      font-size: 12px;
+      color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
+      font-size: 13px;
     }
 
     .comment-content {
       padding-left: 46px;
-      font-size: 14px;
+      font-size: 15px;
       line-height: 1.7;
       word-wrap: break-word;
       overflow-wrap: break-word;
@@ -931,14 +940,14 @@ export class DiscussionWebviewProvider {
       left: 46px;
       right: 0;
       height: 40px;
-      background: linear-gradient(transparent, var(--vscode-editor-inactiveSelectionBackground));
+      background: linear-gradient(transparent, var(--vscode-editor-inactiveSelectionBackground, rgba(30, 30, 30, 0.95)));
     }
 
     .comment-content code {
       background: var(--vscode-textCodeBlock-background);
       padding: 2px 6px;
       border-radius: 4px;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .comment-content pre {
@@ -946,7 +955,7 @@ export class DiscussionWebviewProvider {
       padding: 14px;
       border-radius: 8px;
       overflow-x: auto;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .comment-content p {
@@ -971,15 +980,16 @@ export class DiscussionWebviewProvider {
     .read-more-btn {
       background: none;
       border: none;
-      color: var(--vscode-textLink-foreground);
+      color: var(--vscode-textLink-foreground, #3794ff);
       cursor: pointer;
-      font-size: 13px;
+      font-size: 14px;
       padding: 0;
       font-weight: 500;
     }
 
     .read-more-btn:hover {
       text-decoration: underline;
+      color: var(--vscode-textLink-activeForeground, #63b3ff);
     }
 
     /* Comment Actions */
@@ -1085,7 +1095,7 @@ export class DiscussionWebviewProvider {
       color: var(--vscode-input-foreground);
       border-radius: 8px;
       font-family: inherit;
-      font-size: 13px;
+      font-size: 14px;
       resize: vertical;
       transition: border-color var(--transition-speed) ease;
     }
@@ -1198,10 +1208,11 @@ export class DiscussionWebviewProvider {
 
     .thread-line {
       width: 2px;
-      background: linear-gradient(to bottom, var(--vscode-panel-border), transparent);
+      background: linear-gradient(to bottom, var(--vscode-textLink-foreground, #3794ff), transparent);
       border-radius: 1px;
       margin-right: 16px;
       flex-shrink: 0;
+      opacity: 0.6;
     }
 
     .replies-list {
@@ -1211,11 +1222,11 @@ export class DiscussionWebviewProvider {
     }
 
     .reply-card {
-      background: var(--vscode-editor-background);
+      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
       border-radius: 8px;
       padding: 12px;
       margin-bottom: 12px;
-      border: 1px solid var(--vscode-panel-border);
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
       transition: all var(--transition-speed) ease;
       overflow: hidden;
       box-sizing: border-box;
@@ -1223,6 +1234,7 @@ export class DiscussionWebviewProvider {
 
     .reply-card:hover {
       border-color: var(--vscode-focusBorder);
+      background: var(--vscode-list-hoverBackground, var(--vscode-sideBar-background));
     }
 
     .reply-card .avatar {
@@ -1232,7 +1244,7 @@ export class DiscussionWebviewProvider {
 
     .reply-card .comment-content {
       padding-left: 38px;
-      font-size: 13px;
+      font-size: 14px;
       word-wrap: break-word;
       overflow-wrap: break-word;
       word-break: break-word;
@@ -1278,7 +1290,7 @@ export class DiscussionWebviewProvider {
       color: var(--vscode-input-foreground);
       border-radius: 8px;
       font-family: inherit;
-      font-size: 13px;
+      font-size: 14px;
       resize: vertical;
       transition: border-color var(--transition-speed) ease;
     }
@@ -1327,9 +1339,10 @@ export class DiscussionWebviewProvider {
     .comment-form {
       margin-top: 24px;
       padding: 20px;
-      background: var(--vscode-editor-inactiveSelectionBackground);
+      background: var(--vscode-editor-inactiveSelectionBackground, rgba(255, 255, 255, 0.05));
       border-radius: var(--card-radius);
       box-shadow: var(--card-shadow);
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
     }
 
     .comment-form h3 {
@@ -1347,7 +1360,7 @@ export class DiscussionWebviewProvider {
       color: var(--vscode-input-foreground);
       border-radius: 8px;
       font-family: inherit;
-      font-size: 14px;
+      font-size: 15px;
       resize: vertical;
       transition: border-color var(--transition-speed) ease;
     }
@@ -1365,7 +1378,7 @@ export class DiscussionWebviewProvider {
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 500;
       transition: all var(--transition-speed) ease;
     }
@@ -1379,7 +1392,7 @@ export class DiscussionWebviewProvider {
     .no-comments {
       text-align: center;
       padding: 40px 20px;
-      color: var(--vscode-descriptionForeground);
+      color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
     }
 
     .no-comments-icon {
@@ -1389,7 +1402,7 @@ export class DiscussionWebviewProvider {
     }
 
     .no-comments-text {
-      font-size: 15px;
+      font-size: 16px;
       margin: 0;
     }
 
