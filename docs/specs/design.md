@@ -1790,3 +1790,4 @@ private async handleMentionMessage(message: any, discussionNumber: number): Prom
    - `@`入力時のドロップダウン表示
    - フィルタリング動作
    - 選択時のテキスト挿入
+2. 新規Discussionの作成（新規ファイル保存時）

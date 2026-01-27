@@ -25,7 +25,13 @@ const mockVscode = {
     showQuickPick: jest.fn(),
     createTreeView: jest.fn(),
     createWebviewPanel: jest.fn(),
-    showTextDocument: jest.fn()
+    showTextDocument: jest.fn(),
+    withProgress: jest.fn((_options, task) => task({ report: jest.fn() }, { isCancellationRequested: false }))
+  },
+  ProgressLocation: {
+    Notification: 15,
+    Window: 10,
+    SourceControl: 1
   },
   commands: {
     registerCommand: jest.fn(),
