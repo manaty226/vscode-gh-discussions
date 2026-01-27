@@ -14,7 +14,8 @@ import {
   User,
   AuthenticationState,
   ExtensionSettings,
-  CommentsPage
+  CommentsPage,
+  MentionableUser
 } from '../models';
 
 export interface IAuthenticationService {
@@ -37,6 +38,8 @@ export interface IGitHubService {
   addReply(discussionId: string, commentId: string, body: string): Promise<void>;
   updateComment(commentId: string, body: string): Promise<void>;
   deleteComment(commentId: string): Promise<void>;
+  getMentionableUsers(discussionNumber?: number): Promise<MentionableUser[]>;
+  searchOrganizationMembers(query: string): Promise<MentionableUser[]>;
 }
 
 export interface IStorageService {

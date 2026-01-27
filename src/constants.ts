@@ -17,3 +17,12 @@ export const MIN_REFRESH_INTERVAL_MS = 30 * 1000;
 
 /** Default pagination size for GraphQL queries */
 export const GRAPHQL_PAGINATION_SIZE = 20;
+
+/** Cache TTL for mentionable users in milliseconds (10 minutes) */
+export const MENTIONABLE_USERS_CACHE_TTL_MS = 10 * 60 * 1000;
+
+/** Cache key prefix for mentionable users */
+export const CACHE_KEY_MENTIONABLE_USERS = 'mentionable-users';
+
+/** Cache key prefix for discussion participants */
+export const CACHE_KEY_DISCUSSION_PARTICIPANTS = 'discussion-participants';
