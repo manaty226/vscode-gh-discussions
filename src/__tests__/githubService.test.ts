@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import * as fc from 'fast-check';
 import { GitHubService } from '../services/githubService';
 import { AuthenticationService } from '../services/authenticationService';
-import { RepositoryInfo, Discussion, DiscussionCategory } from '../models';
+import { RepositoryInfo, Discussion, DiscussionCategory, MentionSource } from '../models';
 
 // Mock child_process for git operations
 jest.mock('child_process');
@@ -962,6 +962,379 @@ describe('GitHubService', () => {
         const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
         const requestBody = JSON.parse(fetchCall[1].body);
         expect(requestBody.variables.commentId).toBe('DC_456');
+      });
+    });
+
+    describe('getMentionableUsers', () => {
+      beforeEach(() => {
+        const { execSync } = require('child_process');
+        execSync.mockReturnValue('origin\tgit@github.com:owner/repo.git (fetch)\n');
+      });
+
+      it('should fetch discussion participants when discussionNumber is provided', async () => {
+        // Mock calls in order:
+        // 1. getRepositoryInfo (for getMentionableUsers)
+        // 2. getRepositoryInfo (for getDiscussionParticipants - cached in real usage)
+        // 3. getDiscussionParticipants GraphQL
+        // 4. getRepositoryCollaborators REST API
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. getRepositoryInfo (called again for getDiscussionParticipants)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 3. getDiscussionParticipants
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  discussion: {
+                    author: { login: 'author1', name: 'Author One', avatarUrl: 'https://github.com/author1.png' },
+                    comments: {
+                      nodes: [
+                        {
+                          author: { login: 'commenter1', name: 'Commenter One', avatarUrl: 'https://github.com/commenter1.png' },
+                          replies: {
+                            nodes: [
+                              { author: { login: 'replier1', name: 'Replier One', avatarUrl: 'https://github.com/replier1.png' } }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            })
+          })
+          // 4. getRepositoryCollaborators (REST API)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue([
+              { login: 'collab1', name: 'Collaborator One', avatar_url: 'https://github.com/collab1.png' }
+            ])
+          });
+
+        const users = await githubService.getMentionableUsers(1);
+
+        expect(users.length).toBeGreaterThan(0);
+        // Discussion participants should be first (highest priority)
+        const participantLogins = users
+          .filter(u => u.source === MentionSource.DISCUSSION_PARTICIPANT)
+          .map(u => u.login);
+        expect(participantLogins).toContain('author1');
+        expect(participantLogins).toContain('commenter1');
+        expect(participantLogins).toContain('replier1');
+      });
+
+      it('should fetch collaborators from repository', async () => {
+        // Without discussionNumber, only collaborators are fetched
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. getRepositoryCollaborators (REST API)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue([
+              { login: 'collab1', name: 'Collaborator One', avatar_url: 'https://github.com/collab1.png' },
+              { login: 'collab2', name: 'Collaborator Two', avatar_url: 'https://github.com/collab2.png' }
+            ])
+          });
+
+        const users = await githubService.getMentionableUsers();
+
+        const collaboratorLogins = users
+          .filter(u => u.source === MentionSource.COLLABORATOR)
+          .map(u => u.login);
+        expect(collaboratorLogins).toContain('collab1');
+        expect(collaboratorLogins).toContain('collab2');
+      });
+
+      it('should deduplicate users across sources', async () => {
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. getRepositoryInfo (for getDiscussionParticipants)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 3. getDiscussionParticipants - same user as collaborator
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  discussion: {
+                    author: { login: 'shareduser', name: 'Shared User', avatarUrl: 'https://github.com/shareduser.png' },
+                    comments: { nodes: [] }
+                  }
+                }
+              }
+            })
+          })
+          // 4. getRepositoryCollaborators - same user
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue([
+              { login: 'shareduser', name: 'Shared User', avatar_url: 'https://github.com/shareduser.png' }
+            ])
+          });
+
+        const users = await githubService.getMentionableUsers(1);
+
+        // Should have only one entry for shareduser
+        const sharedUserCount = users.filter(u => u.login === 'shareduser').length;
+        expect(sharedUserCount).toBe(1);
+        // Should keep the highest priority source (participant)
+        const sharedUser = users.find(u => u.login === 'shareduser');
+        expect(sharedUser?.source).toBe(MentionSource.DISCUSSION_PARTICIPANT);
+      });
+
+      it('should sort users by priority (participant > collaborator)', async () => {
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. getRepositoryInfo (for getDiscussionParticipants)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 3. getDiscussionParticipants
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  discussion: {
+                    author: { login: 'participant1', name: 'P1', avatarUrl: 'https://github.com/p1.png' },
+                    comments: { nodes: [] }
+                  }
+                }
+              }
+            })
+          })
+          // 4. getRepositoryCollaborators
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue([
+              { login: 'collaborator1', name: 'C1', avatar_url: 'https://github.com/c1.png' }
+            ])
+          });
+
+        const users = await githubService.getMentionableUsers(1);
+
+        // Find indexes
+        const participantIndex = users.findIndex(u => u.login === 'participant1');
+        const collaboratorIndex = users.findIndex(u => u.login === 'collaborator1');
+
+        // Both should exist
+        expect(participantIndex).toBeGreaterThanOrEqual(0);
+        expect(collaboratorIndex).toBeGreaterThanOrEqual(0);
+        // Participants should come before collaborators
+        expect(participantIndex).toBeLessThan(collaboratorIndex);
+      });
+
+      it('should return empty array when not authenticated', async () => {
+        mockAuthService.getSessionSilent.mockResolvedValue(undefined);
+
+        const users = await githubService.getMentionableUsers();
+
+        expect(users).toEqual([]);
+      });
+
+      it('should handle API errors gracefully', async () => {
+        (global.fetch as jest.Mock)
+          // getRepositoryInfo succeeds
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'owner' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // getRepositoryCollaborators - fails
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 403,
+            statusText: 'Forbidden'
+          });
+
+        // Should not throw, but return empty or partial results
+        const users = await githubService.getMentionableUsers();
+        expect(Array.isArray(users)).toBe(true);
+      });
+    });
+
+    describe('searchOrganizationMembers', () => {
+      beforeEach(() => {
+        const { execSync } = require('child_process');
+        execSync.mockReturnValue('origin\tgit@github.com:my-org/repo.git (fetch)\n');
+      });
+
+      it('should search organization members by query', async () => {
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'my-org' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. isOrganizationRepository - check owner type (Organization)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({ type: 'Organization' })
+          })
+          // 3. Search users API
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              items: [
+                { login: 'org-member1', avatar_url: 'https://github.com/org-member1.png' },
+                { login: 'org-member2', avatar_url: 'https://github.com/org-member2.png' }
+              ]
+            })
+          });
+
+        const users = await githubService.searchOrganizationMembers('member');
+
+        expect(users.length).toBe(2);
+        expect(users[0].login).toBe('org-member1');
+        expect(users[1].login).toBe('org-member2');
+        expect(users[0].source).toBe(MentionSource.ORG_MEMBER);
+      });
+
+      it('should return empty array for non-organization repositories', async () => {
+        (global.fetch as jest.Mock)
+          // 1. getRepositoryInfo
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({
+              data: {
+                repository: {
+                  id: 'R_123',
+                  name: 'repo',
+                  owner: { login: 'user' },
+                  hasDiscussionsEnabled: true
+                }
+              }
+            })
+          })
+          // 2. isOrganizationRepository - check owner type (User, not org)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({ type: 'User' })
+          });
+
+        const users = await githubService.searchOrganizationMembers('member');
+
+        expect(users).toEqual([]);
+      });
+
+      it('should return empty array for empty query', async () => {
+        const users = await githubService.searchOrganizationMembers('');
+
+        expect(users).toEqual([]);
+      });
+
+      it('should return empty array when not authenticated', async () => {
+        mockAuthService.getSessionSilent.mockResolvedValue(undefined);
+
+        const users = await githubService.searchOrganizationMembers('member');
+
+        expect(users).toEqual([]);
       });
     });
   });

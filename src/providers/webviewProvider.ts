@@ -172,6 +172,66 @@ export class DiscussionWebviewProvider {
           await this.refreshCommentsPanel(discussionNumber);
         }
         break;
+      case 'getMentionableUsers':
+        // Requirement 19: Get mentionable users for @mention suggestions
+        await this.handleGetMentionableUsers(discussionNumber);
+        break;
+      case 'searchOrgMembers':
+        // Requirement 19: Search organization members lazily for performance
+        await this.handleSearchOrgMembers(discussionNumber, message.query);
+        break;
+    }
+  }
+
+  /**
+   * Handle getMentionableUsers message
+   * Requirement 19: Mention functionality
+   */
+  private async handleGetMentionableUsers(discussionNumber: number): Promise<void> {
+    const panel = this.panels.get(`comments-${discussionNumber}`);
+    if (!panel || panel.visible === undefined) {
+      return;
+    }
+
+    try {
+      const users = await this.githubService.getMentionableUsers(discussionNumber);
+      panel.webview.postMessage({
+        type: 'mentionableUsers',
+        users: users
+      });
+    } catch (error) {
+      console.warn('Failed to get mentionable users:', error);
+      panel.webview.postMessage({
+        type: 'mentionableUsers',
+        users: []
+      });
+    }
+  }
+
+  /**
+   * Handle searchOrgMembers message
+   * Requirement 19: Search organization members lazily for performance
+   */
+  private async handleSearchOrgMembers(discussionNumber: number, query: string): Promise<void> {
+    const panel = this.panels.get(`comments-${discussionNumber}`);
+    if (!panel || panel.visible === undefined) {
+      return;
+    }
+
+    try {
+      const users = await this.githubService.searchOrganizationMembers(query);
+      panel.webview.postMessage({
+        type: 'orgMembersSearchResult',
+        users: users,
+        query: query
+      });
+    } catch (error) {
+      console.warn('Failed to search organization members:', error);
+      panel.webview.postMessage({
+        type: 'orgMembersSearchResult',
+        users: [],
+        query: query
+      });
     }
   }
 
@@ -686,7 +746,10 @@ export class DiscussionWebviewProvider {
             ${editDeleteButtons}
           </div>
           <div class="reply-form" id="reply-form-${this.escapeHtml(comment.id)}">
-            <textarea id="reply-body-${this.escapeHtml(comment.id)}" placeholder="返信を入力...（Markdown対応）"></textarea>
+            <div class="reply-input-container">
+              <div class="mention-dropdown" id="mention-dropdown-${this.escapeHtml(comment.id)}"></div>
+              <textarea id="reply-body-${this.escapeHtml(comment.id)}" placeholder="返信を入力...（Markdown対応、@でメンション）" class="mention-enabled" data-textarea-id="${this.escapeHtml(comment.id)}"></textarea>
+            </div>
             <div class="reply-form-actions">
               <button class="submit-btn" data-action="submit-reply" data-target-comment-id="${this.escapeHtml(comment.id)}">送信</button>
               <button class="cancel-btn" data-action="hide-reply-form" data-target-comment-id="${this.escapeHtml(comment.id)}">キャンセル</button>
@@ -1446,6 +1509,103 @@ export class DiscussionWebviewProvider {
       }
     }
 
+    /* Mention dropdown styles (Requirement 19) */
+    .comment-input-container,
+    .reply-input-container {
+      position: relative;
+    }
+
+    .mention-dropdown {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--vscode-dropdown-background);
+      border: 1px solid var(--vscode-dropdown-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      z-index: 1000;
+      display: none;
+      margin-bottom: 4px;
+    }
+
+    .mention-dropdown.visible {
+      display: block;
+      animation: fadeInUp 0.15s ease;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .mention-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background var(--transition-speed) ease;
+    }
+
+    .mention-item:hover,
+    .mention-item.selected {
+      background: var(--vscode-list-hoverBackground);
+    }
+
+    .mention-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 1px solid var(--vscode-panel-border);
+    }
+
+    .mention-info {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mention-login {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--vscode-foreground);
+    }
+
+    .mention-name {
+      font-size: 12px;
+      color: var(--vscode-descriptionForeground);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mention-source {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      padding: 2px 6px;
+      background: var(--vscode-badge-background);
+      border-radius: 10px;
+      margin-left: 8px;
+    }
+
+    .mention-loading,
+    .mention-empty {
+      padding: 12px;
+      text-align: center;
+      color: var(--vscode-descriptionForeground);
+      font-size: 13px;
+    }
+
     /* Mermaid diagram styles (Requirements 12.1, 12.5) */
     .mermaid-diagram {
       background: var(--vscode-editor-background);
@@ -1518,7 +1678,10 @@ export class DiscussionWebviewProvider {
 
       <div class="comment-form">
         <h3>コメントを追加</h3>
-        <textarea id="commentBody" placeholder="コメントを入力...（Markdown対応）"></textarea>
+        <div class="comment-input-container">
+          <div class="mention-dropdown" id="mention-dropdown-comment"></div>
+          <textarea id="commentBody" placeholder="コメントを入力...（Markdown対応、@でメンション）" class="mention-enabled" data-textarea-id="comment"></textarea>
+        </div>
         <button id="submit-comment-btn" data-action="submit-comment">コメントを投稿</button>
       </div>
     </div>
@@ -2024,6 +2187,368 @@ export class DiscussionWebviewProvider {
         hideDeleteDialog();
       }
     });
+
+    // Debounce utility function
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
+    }
+
+    // Mention functionality (Requirement 19)
+    class MentionHandler {
+      constructor(textarea, dropdown) {
+        this.textarea = textarea;
+        this.dropdown = dropdown;
+        this.users = [];
+        this.orgMembers = []; // Lazily loaded org members
+        this.filteredUsers = [];
+        this.selectedIndex = -1;
+        this.mentionStart = -1;
+        this.isLoading = false;
+        this.usersLoaded = false;
+        this.currentQuery = '';
+        this.debounceTimeout = null;
+        this.orgSearchTimeout = null;
+        this.isComposing = false;
+        this.isSearchingOrg = false;
+        this.lastOrgSearchQuery = '';
+
+        this.setupEventListeners();
+      }
+
+      setupEventListeners() {
+        this.textarea.addEventListener('input', () => this.handleInput());
+        this.textarea.addEventListener('keydown', (e) => this.handleKeydown(e));
+        this.textarea.addEventListener('blur', () => {
+          // Delay hiding to allow click on dropdown items
+          setTimeout(() => this.hideDropdown(), 150);
+        });
+        // Handle IME composition
+        this.textarea.addEventListener('compositionstart', () => {
+          this.isComposing = true;
+        });
+        this.textarea.addEventListener('compositionend', () => {
+          this.isComposing = false;
+          // Re-trigger input handling after composition ends
+          this.handleInput();
+        });
+      }
+
+      handleInput() {
+        // Skip if IME composition is in progress
+        if (this.isComposing) {
+          return;
+        }
+
+        const text = this.textarea.value;
+        const cursorPos = this.textarea.selectionStart;
+        const textBeforeCursor = text.slice(0, cursorPos);
+
+        // Detect @ (half-width or full-width) followed by optional word characters
+        const mentionMatch = textBeforeCursor.match(/[@＠]([a-zA-Z0-9_-]*)$/);
+
+        if (mentionMatch) {
+          this.mentionStart = cursorPos - mentionMatch[0].length;
+          const query = mentionMatch[1].toLowerCase();
+          this.currentQuery = query;
+
+          // Load users if not already loaded
+          if (!this.usersLoaded && !this.isLoading) {
+            this.loadUsers();
+            this.showLoadingState();
+            return;
+          }
+
+          // If still loading, keep showing loading state
+          if (this.isLoading) {
+            this.showLoadingState();
+            return;
+          }
+
+          // If users are already loaded, apply debounce for filtering
+          clearTimeout(this.debounceTimeout);
+          if (this.usersLoaded) {
+            // Apply debounce only when filtering (query has characters)
+            if (query.length > 0) {
+              this.debounceTimeout = setTimeout(() => {
+                if (this.currentQuery === query) {
+                  this.showDropdown(query);
+                }
+              }, 300);
+            } else {
+              // Show immediately when just @ is typed
+              this.showDropdown(query);
+            }
+          }
+        } else {
+          clearTimeout(this.debounceTimeout);
+          this.hideDropdown();
+        }
+      }
+
+      loadUsers() {
+        this.isLoading = true;
+        this.showLoadingState();
+
+        // Request mentionable users from extension
+        vscode.postMessage({ type: 'getMentionableUsers' });
+      }
+
+      setUsers(users) {
+        this.users = users || [];
+        this.usersLoaded = true;
+        this.isLoading = false;
+
+        // Re-filter with current query if there's a pending mention
+        const text = this.textarea.value;
+        const cursorPos = this.textarea.selectionStart;
+        const textBeforeCursor = text.slice(0, cursorPos);
+        const mentionMatch = textBeforeCursor.match(/[@＠]([a-zA-Z0-9_-]*)$/);
+        if (mentionMatch) {
+          this.showDropdown(mentionMatch[1].toLowerCase());
+        }
+      }
+
+      showLoadingState() {
+        this.dropdown.innerHTML = '<div class="mention-loading">ユーザーを読み込み中...</div>';
+        this.dropdown.classList.add('visible');
+      }
+
+      showDropdown(query) {
+        if (this.isLoading) {
+          this.showLoadingState();
+          return;
+        }
+
+        // Combine base users with org members
+        const allUsers = [...this.users];
+
+        // Add org members that are not already in the list
+        for (const orgUser of this.orgMembers) {
+          if (!allUsers.some(u => u.login === orgUser.login)) {
+            allUsers.push(orgUser);
+          }
+        }
+
+        // Filter users by query
+        this.filteredUsers = allUsers.filter(user => {
+          const loginMatch = user.login.toLowerCase().includes(query);
+          const nameMatch = user.name && user.name.toLowerCase().includes(query);
+          return loginMatch || nameMatch;
+        });
+
+        // If query has characters and we have few results, search org members lazily
+        if (query.length >= 1 && this.filteredUsers.length < 5 && !this.isSearchingOrg && query !== this.lastOrgSearchQuery) {
+          this.searchOrgMembers(query);
+        }
+
+        if (this.filteredUsers.length === 0) {
+          if (this.isSearchingOrg) {
+            this.dropdown.innerHTML = '<div class="mention-loading">組織メンバーを検索中...</div>';
+          } else {
+            this.dropdown.innerHTML = '<div class="mention-empty">該当するユーザーが見つかりません</div>';
+          }
+          this.dropdown.classList.add('visible');
+          return;
+        }
+
+        // Render user list
+        this.selectedIndex = 0;
+        this.renderDropdown();
+        this.dropdown.classList.add('visible');
+      }
+
+      searchOrgMembers(query) {
+        // Debounce org member search (500ms)
+        clearTimeout(this.orgSearchTimeout);
+        this.orgSearchTimeout = setTimeout(() => {
+          if (this.currentQuery === query) {
+            this.isSearchingOrg = true;
+            this.lastOrgSearchQuery = query;
+            vscode.postMessage({ type: 'searchOrgMembers', query: query });
+          }
+        }, 500);
+      }
+
+      setOrgMembersSearchResult(users, query) {
+        this.isSearchingOrg = false;
+
+        // Add new org members to the cache
+        for (const user of (users || [])) {
+          if (!this.orgMembers.some(u => u.login === user.login)) {
+            this.orgMembers.push(user);
+          }
+        }
+
+        // Re-filter if the query is still relevant
+        if (this.currentQuery === query || this.currentQuery.startsWith(query)) {
+          this.showDropdown(this.currentQuery);
+        }
+      }
+
+      renderDropdown() {
+        const sourceLabels = {
+          'participant': '参加者',
+          'collaborator': 'コラボレーター',
+          'org_member': 'Orgメンバー'
+        };
+
+        this.dropdown.innerHTML = this.filteredUsers.map((user, index) => {
+          const selectedClass = index === this.selectedIndex ? 'selected' : '';
+          const sourceLabel = sourceLabels[user.source] || user.source;
+          const nameHtml = user.name ? '<span class="mention-name">' + this.escapeHtml(user.name) + '</span>' : '';
+
+          return '<div class="mention-item ' + selectedClass + '" data-index="' + index + '">' +
+            '<img class="mention-avatar" src="' + this.escapeHtml(user.avatarUrl) + '" alt="" />' +
+            '<div class="mention-info">' +
+              '<span class="mention-login">@' + this.escapeHtml(user.login) + '</span>' +
+              nameHtml +
+            '</div>' +
+            '<span class="mention-source">' + sourceLabel + '</span>' +
+          '</div>';
+        }).join('');
+
+        // Add click handlers to items
+        this.dropdown.querySelectorAll('.mention-item').forEach((item) => {
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault(); // Prevent blur
+            const index = parseInt(item.getAttribute('data-index'));
+            if (!isNaN(index) && this.filteredUsers[index]) {
+              this.insertMention(this.filteredUsers[index]);
+            }
+          });
+          item.addEventListener('mouseover', () => {
+            const index = parseInt(item.getAttribute('data-index'));
+            if (!isNaN(index)) {
+              this.selectedIndex = index;
+              this.updateSelection();
+            }
+          });
+        });
+      }
+
+      hideDropdown() {
+        this.dropdown.classList.remove('visible');
+        this.selectedIndex = -1;
+        this.mentionStart = -1;
+      }
+
+      handleKeydown(e) {
+        if (!this.dropdown.classList.contains('visible')) {
+          return;
+        }
+
+        switch (e.key) {
+          case 'ArrowDown':
+            e.preventDefault();
+            this.selectedIndex = Math.min(this.selectedIndex + 1, this.filteredUsers.length - 1);
+            this.updateSelection();
+            break;
+          case 'ArrowUp':
+            e.preventDefault();
+            this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+            this.updateSelection();
+            break;
+          case 'Enter':
+          case 'Tab':
+            if (this.selectedIndex >= 0 && this.filteredUsers[this.selectedIndex]) {
+              e.preventDefault();
+              this.insertMention(this.filteredUsers[this.selectedIndex]);
+            }
+            break;
+          case 'Escape':
+            e.preventDefault();
+            this.hideDropdown();
+            break;
+        }
+      }
+
+      updateSelection() {
+        const items = this.dropdown.querySelectorAll('.mention-item');
+        items.forEach((item, index) => {
+          if (index === this.selectedIndex) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+          } else {
+            item.classList.remove('selected');
+          }
+        });
+      }
+
+      insertMention(user) {
+        const text = this.textarea.value;
+        const before = text.slice(0, this.mentionStart);
+        const after = text.slice(this.textarea.selectionStart);
+
+        const mention = '@' + user.login + ' ';
+        this.textarea.value = before + mention + after;
+
+        const newCursorPos = this.mentionStart + mention.length;
+        this.textarea.selectionStart = newCursorPos;
+        this.textarea.selectionEnd = newCursorPos;
+
+        this.hideDropdown();
+        this.textarea.focus();
+      }
+
+      escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
+    }
+
+    // Store mention handlers for each textarea
+    const mentionHandlers = new Map();
+
+    // Initialize mention handlers for existing textareas
+    function initMentionHandlers() {
+      document.querySelectorAll('textarea.mention-enabled').forEach(textarea => {
+        const textareaId = textarea.getAttribute('data-textarea-id');
+        if (textareaId && !mentionHandlers.has(textareaId)) {
+          const dropdown = document.getElementById('mention-dropdown-' + textareaId);
+          if (dropdown) {
+            const handler = new MentionHandler(textarea, dropdown);
+            mentionHandlers.set(textareaId, handler);
+          }
+        }
+      });
+    }
+
+    // Handle mentionable users response from extension
+    window.addEventListener('message', event => {
+      const message = event.data;
+      if (message.type === 'mentionableUsers') {
+        mentionHandlers.forEach((handler) => {
+          handler.setUsers(message.users);
+        });
+      } else if (message.type === 'orgMembersSearchResult') {
+        mentionHandlers.forEach((handler) => {
+          handler.setOrgMembersSearchResult(message.users, message.query);
+        });
+      }
+    });
+
+    // Initialize mention handlers after DOM is ready
+    initMentionHandlers();
+
+    // Re-initialize when new reply forms are shown
+    const originalShowReplyForm = showReplyForm;
+    showReplyForm = function(commentId) {
+      originalShowReplyForm(commentId);
+      // Initialize mention handler for the reply textarea
+      setTimeout(() => {
+        const textarea = document.getElementById('reply-body-' + commentId);
+        const dropdown = document.getElementById('mention-dropdown-' + commentId);
+        if (textarea && dropdown && !mentionHandlers.has(commentId)) {
+          const handler = new MentionHandler(textarea, dropdown);
+          mentionHandlers.set(commentId, handler);
+        }
+      }, 0);
+    };
   </script>
   <!-- Mermaid.js bundle (Requirement 12.2) -->
   ${mermaidScriptUri ? `<script nonce="${nonce}" src="${mermaidScriptUri}" id="mermaid-script"></script>` : '<!-- Mermaid script unavailable -->'}

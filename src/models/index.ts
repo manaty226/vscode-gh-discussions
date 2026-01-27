@@ -206,3 +206,24 @@ export interface ExtensionSettings {
   defaultSort: 'newest' | 'oldest' | 'top';
   defaultCategory: string;
 }
+
+/**
+ * Source of mentionable users (for priority sorting)
+ * Requirement 19.6: Priority order for mention suggestions
+ */
+export enum MentionSource {
+  DISCUSSION_PARTICIPANT = 'participant', // Highest priority
+  COLLABORATOR = 'collaborator',
+  ORG_MEMBER = 'org_member', // Lowest priority
+}
+
+/**
+ * Mentionable user for @mention suggestions
+ * Requirement 19: Mention functionality
+ */
+export interface MentionableUser {
+  login: string;
+  name: string | null;
+  avatarUrl: string;
+  source: MentionSource;
+}

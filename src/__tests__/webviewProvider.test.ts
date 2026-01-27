@@ -973,4 +973,132 @@ describe('DiscussionWebviewProvider', () => {
       });
     });
   });
+
+  describe('Mention Functionality (Requirement 19)', () => {
+    describe('Mention UI Components', () => {
+      it('should include mention dropdown CSS styles', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('.mention-dropdown');
+        expect(mockWebview.html).toContain('.mention-item');
+        expect(mockWebview.html).toContain('.mention-avatar');
+        expect(mockWebview.html).toContain('.mention-login');
+      });
+
+      it('should include mention-enabled class on comment textarea', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('class="mention-enabled"');
+        expect(mockWebview.html).toContain('data-textarea-id="comment"');
+      });
+
+      it('should include mention dropdown container for comment input', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('comment-input-container');
+        expect(mockWebview.html).toContain('id="mention-dropdown-comment"');
+      });
+
+      it('should include mention dropdown for reply inputs', async () => {
+        await provider.showComments(mockDiscussion);
+
+        // Should have dropdown for reply forms
+        expect(mockWebview.html).toContain('reply-input-container');
+        expect(mockWebview.html).toContain('mention-dropdown');
+      });
+
+      it('should include placeholder text mentioning @mention feature', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('@でメンション');
+      });
+    });
+
+    describe('Mention JavaScript functionality', () => {
+      it('should include MentionHandler class', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('class MentionHandler');
+      });
+
+      it('should include handleInput method for @ detection', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('handleInput');
+        // Check for the regex pattern that detects @mention (supports both half-width @ and full-width ＠)
+        expect(mockWebview.html).toContain('/[@＠]([a-zA-Z0-9_-]*)$/');
+      });
+
+      it('should include keyboard navigation handlers', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('handleKeydown');
+        expect(mockWebview.html).toContain('ArrowDown');
+        expect(mockWebview.html).toContain('ArrowUp');
+        expect(mockWebview.html).toContain('Enter');
+        expect(mockWebview.html).toContain('Escape');
+      });
+
+      it('should include insertMention method', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('insertMention');
+      });
+
+      it('should initialize mention handlers on load', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('initMentionHandlers');
+      });
+    });
+
+    describe('Mention message handling', () => {
+      it('should handle getMentionableUsers message', async () => {
+        const mockUsers = [
+          { login: 'user1', name: 'User One', avatarUrl: 'https://example.com/1.png', source: 'participant' },
+          { login: 'user2', name: 'User Two', avatarUrl: 'https://example.com/2.png', source: 'collaborator' }
+        ];
+        (mockGitHubService as any).getMentionableUsers = jest.fn().mockResolvedValue(mockUsers);
+
+        await provider.showComments(mockDiscussion);
+
+        const messageHandler = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+        await messageHandler({
+          type: 'getMentionableUsers'
+        });
+
+        expect(mockGitHubService.getMentionableUsers).toHaveBeenCalledWith(1);
+        expect(mockWebview.postMessage).toHaveBeenCalledWith({
+          type: 'mentionableUsers',
+          users: mockUsers
+        });
+      });
+
+      it('should return empty array when getMentionableUsers fails', async () => {
+        (mockGitHubService as any).getMentionableUsers = jest.fn().mockRejectedValue(new Error('API Error'));
+
+        await provider.showComments(mockDiscussion);
+
+        const messageHandler = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+        await messageHandler({
+          type: 'getMentionableUsers'
+        });
+
+        expect(mockWebview.postMessage).toHaveBeenCalledWith({
+          type: 'mentionableUsers',
+          users: []
+        });
+      });
+    });
+
+    describe('Mention source labels', () => {
+      it('should include source label translations in Japanese', async () => {
+        await provider.showComments(mockDiscussion);
+
+        expect(mockWebview.html).toContain('参加者');
+        expect(mockWebview.html).toContain('コラボレーター');
+        expect(mockWebview.html).toContain('Orgメンバー');
+      });
+    });
+  });
 });

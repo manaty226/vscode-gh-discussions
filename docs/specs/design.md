@@ -201,6 +201,7 @@ interface GitHubService {
   addReply(commentId: string, body: string): Promise<void>;  // コメントへのリプライ
   updateComment(commentId: string, body: string): Promise<void>;  // コメントの編集（要件13.3）
   deleteComment(commentId: string): Promise<void>;  // コメントの削除（要件13.6）
+  getMentionableUsers(discussionNumber?: number): Promise<MentionableUser[]>;  // メンション候補取得（要件19）
 }
 
 interface CommentsPage {
@@ -1441,3 +1442,351 @@ export class DiscussionWebviewProvider {
 2. **CSP**: nonce-basedでバンドルスクリプトのみ許可
 3. **サニタイゼーション**: Mermaid内蔵のDOMPurifyによる出力サニタイズ
 4. **ネットワーク制限**: 外部リソースの読み込みを禁止
+
+## 保存中インジケーター設計（要件18対応）
+
+### 概要
+
+Discussion保存時にユーザーに進捗を通知する機能。`vscode.window.withProgress` APIを使用して通知エリアにプログレスインジケーターを表示する。
+
+### 実装方針
+
+`DiscussionFileSystemProvider.writeFile`メソッド内で`withProgress`を使用し、既存の保存処理をラップする。
+
+```typescript
+async writeFile(
+  uri: vscode.Uri,
+  content: Uint8Array,
+  _options: { create: boolean; overwrite: boolean }
+): Promise<void> {
+  await vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: "Saving discussion to GitHub...",
+    cancellable: false
+  }, async () => {
+    // 既存の保存処理
+  });
+}
+```
+
+### 表示仕様
+
+| 状態 | 表示内容 |
+|------|----------|
+| 保存中 | 通知エリアにスピナー + "Saving discussion to GitHub..." |
+| 完了 | 通知が自動的に消える |
+| エラー | 既存のエラーハンドリングでエラーメッセージを表示 |
+
+### 対象操作
+
+1. 既存Discussionの更新（`Cmd+S`等でファイル保存時）
+2. 新規Discussionの作成（新規ファイル保存時）
+
+## メンション機能設計（要件19対応）
+
+### 概要
+
+コメントや返信の入力時に`@`を入力すると、メンション候補のドロップダウンを表示し、ユーザーを選択して`@username`形式で挿入する機能。
+
+### データモデル
+
+```typescript
+// メンション候補ユーザー
+interface MentionableUser {
+  login: string;        // GitHubユーザー名
+  name: string | null;  // 表示名
+  avatarUrl: string;    // アバター画像URL
+  source: MentionSource; // 候補のソース（優先度判定用）
+}
+
+// メンション候補のソース
+enum MentionSource {
+  DISCUSSION_PARTICIPANT = 'participant',  // Discussion参加者（最優先）
+  COLLABORATOR = 'collaborator',           // リポジトリコラボレーター
+  ORG_MEMBER = 'org_member'                // Organizationメンバー
+}
+```
+
+### メンション候補取得フロー
+
+```
+@入力検出
+    ↓
+キャッシュを確認
+    ↓ (キャッシュあり)
+キャッシュからフィルタリング
+    ↓ (キャッシュなし)
+API呼び出し（並列）
+├── Discussion参加者取得
+├── リポジトリコラボレーター取得
+└── Organizationメンバー取得（Orgリポジトリの場合）
+    ↓
+重複排除・優先度でソート
+    ↓
+キャッシュに保存
+    ↓
+ドロップダウンに表示
+```
+
+### GitHubServiceの拡張
+
+```typescript
+interface IGitHubService {
+  // 既存メソッド...
+
+  // 新規メソッド（要件19対応）
+  getMentionableUsers(discussionNumber?: number): Promise<MentionableUser[]>;
+}
+```
+
+**API呼び出し:**
+
+1. **Discussion参加者**（GraphQL）
+```graphql
+query GetDiscussionParticipants($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    discussion(number: $number) {
+      author { login name avatarUrl }
+      comments(first: 100) {
+        nodes {
+          author { login name avatarUrl }
+          replies(first: 100) {
+            nodes {
+              author { login name avatarUrl }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+2. **リポジトリコラボレーター**（REST API）
+```
+GET /repos/{owner}/{repo}/collaborators
+```
+
+3. **Organizationメンバー**（REST API）
+```
+GET /orgs/{org}/members
+```
+
+### WebviewProviderの拡張
+
+**UIコンポーネント:**
+
+```html
+<!-- コメント入力エリア -->
+<div class="comment-input-container">
+  <textarea id="commentBody" class="mention-enabled"></textarea>
+
+  <!-- メンションドロップダウン -->
+  <div class="mention-dropdown" id="mentionDropdown" style="display: none;">
+    <div class="mention-item" data-login="username">
+      <img class="mention-avatar" src="avatar-url" />
+      <span class="mention-login">@username</span>
+      <span class="mention-name">Display Name</span>
+    </div>
+    <!-- ... -->
+  </div>
+</div>
+```
+
+**CSSスタイル:**
+
+```css
+.comment-input-container {
+  position: relative;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.mention-item:hover,
+.mention-item.selected {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mention-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.mention-login {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.mention-name {
+  color: var(--vscode-descriptionForeground);
+}
+```
+
+**JavaScript処理:**
+
+```javascript
+// メンション検出と処理
+class MentionHandler {
+  constructor(textarea, dropdown, vscode) {
+    this.textarea = textarea;
+    this.dropdown = dropdown;
+    this.vscode = vscode;
+    this.users = [];
+    this.selectedIndex = -1;
+    this.mentionStart = -1;
+
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    this.textarea.addEventListener('input', (e) => this.onInput(e));
+    this.textarea.addEventListener('keydown', (e) => this.onKeydown(e));
+    document.addEventListener('click', (e) => this.onDocumentClick(e));
+  }
+
+  onInput(e) {
+    const text = this.textarea.value;
+    const cursorPos = this.textarea.selectionStart;
+    const textBeforeCursor = text.slice(0, cursorPos);
+
+    // @の後に続くテキストを検出
+    const mentionMatch = textBeforeCursor.match(/@(\w*)$/);
+
+    if (mentionMatch) {
+      this.mentionStart = cursorPos - mentionMatch[0].length;
+      const query = mentionMatch[1].toLowerCase();
+      this.showDropdown(query);
+    } else {
+      this.hideDropdown();
+    }
+  }
+
+  onKeydown(e) {
+    if (!this.isDropdownVisible()) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        this.selectNext();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        this.selectPrevious();
+        break;
+      case 'Enter':
+      case 'Tab':
+        if (this.selectedIndex >= 0) {
+          e.preventDefault();
+          this.insertMention(this.filteredUsers[this.selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        this.hideDropdown();
+        break;
+    }
+  }
+
+  showDropdown(query) {
+    // ユーザーリストが空の場合、APIから取得
+    if (this.users.length === 0) {
+      this.vscode.postMessage({ type: 'getMentionableUsers' });
+      return;
+    }
+
+    // フィルタリング
+    this.filteredUsers = this.users.filter(u =>
+      u.login.toLowerCase().includes(query) ||
+      (u.name && u.name.toLowerCase().includes(query))
+    );
+
+    // ドロップダウンを更新
+    this.renderDropdown();
+    this.dropdown.style.display = 'block';
+    this.selectedIndex = 0;
+    this.updateSelection();
+  }
+
+  insertMention(user) {
+    const text = this.textarea.value;
+    const before = text.slice(0, this.mentionStart);
+    const after = text.slice(this.textarea.selectionStart);
+
+    this.textarea.value = before + '@' + user.login + ' ' + after;
+    this.textarea.selectionStart = this.mentionStart + user.login.length + 2;
+    this.textarea.selectionEnd = this.textarea.selectionStart;
+
+    this.hideDropdown();
+    this.textarea.focus();
+  }
+}
+```
+
+### キャッシュ戦略
+
+```typescript
+// キャッシュキー
+const CACHE_KEY_MENTIONABLE_USERS = 'mentionable-users';
+const CACHE_KEY_DISCUSSION_PARTICIPANTS = (discussionNumber: number) =>
+  `discussion-participants:${discussionNumber}`;
+
+// TTL設定
+const MENTIONABLE_USERS_TTL = 10 * 60 * 1000; // 10分
+const PARTICIPANTS_TTL = 5 * 60 * 1000;       // 5分（Discussion毎に異なる）
+```
+
+### メッセージハンドリング
+
+```typescript
+// WebviewProvider内
+private async handleMentionMessage(message: any, discussionNumber: number): Promise<void> {
+  switch (message.type) {
+    case 'getMentionableUsers':
+      const users = await this.githubService.getMentionableUsers(discussionNumber);
+      this.panel?.webview.postMessage({
+        type: 'mentionableUsers',
+        users: users
+      });
+      break;
+  }
+}
+```
+
+### セキュリティ考慮事項
+
+1. **XSS対策**: ユーザー名・表示名はHTMLエスケープ
+2. **レート制限**: デバウンス（300ms）でAPI呼び出し頻度を制限
+3. **キャッシュ**: 短いTTLで最新の参加者情報を維持
+
+### テスト戦略
+
+1. **ユニットテスト**
+   - getMentionableUsersのAPI呼び出し検証
+   - 重複排除と優先度ソートの検証
+   - キャッシュの動作検証
+
+2. **統合テスト**
+   - `@`入力時のドロップダウン表示
+   - フィルタリング動作
+   - 選択時のテキスト挿入
