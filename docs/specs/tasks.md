@@ -668,82 +668,83 @@ VSCode上でGitHub Discussionsを管理する拡張機能をTypeScriptで実装�
     - 全テスト通過確認
     - Cmd+S時に通知が表示されることを確認
 
-- [ ] 26. メンション機能の実装（要件19対応）
-  - [ ] 26.1 データモデルの追加
-    - [ ] 26.1.1 MentionableUserインターフェースの作成
+- [x] 26. メンション機能の実装（要件19対応）
+  - [x] 26.1 データモデルの追加
+    - [x] 26.1.1 MentionableUserインターフェースの作成
       - login, name, avatarUrl, sourceフィールド
       - _要件: 19.2_
-    - [ ] 26.1.2 MentionSource列挙型の作成
+    - [x] 26.1.2 MentionSource列挙型の作成
       - DISCUSSION_PARTICIPANT, COLLABORATOR, ORG_MEMBER
       - _要件: 19.6_
 
-  - [ ] 26.2 GitHubServiceの拡張
-    - [ ] 26.2.1 getDiscussionParticipants()メソッドの実装
+  - [x] 26.2 GitHubServiceの拡張
+    - [x] 26.2.1 getDiscussionParticipants()メソッドの実装
       - Discussion author + コメント者を取得
       - GraphQLクエリでauthorとcomments.nodes.authorを取得
       - _要件: 19.6_
-    - [ ] 26.2.2 getRepositoryCollaborators()メソッドの実装
+    - [x] 26.2.2 getRepositoryCollaborators()メソッドの実装
       - REST API /repos/{owner}/{repo}/collaboratorsを使用
       - _要件: 19.6_
-    - [ ] 26.2.3 getOrganizationMembers()メソッドの実装
-      - REST API /orgs/{org}/membersを使用
-      - Orgリポジトリの場合のみ呼び出し
+    - [x] 26.2.3 searchOrganizationMembers()メソッドの実装
+      - GitHub Search API /search/users?q=...+org:...を使用
+      - Orgリポジトリの場合のみ、遅延取得でパフォーマンス最適化
       - _要件: 19.6_
-    - [ ] 26.2.4 getMentionableUsers()メソッドの実装
-      - 上記3つのソースを統合
+    - [x] 26.2.4 getMentionableUsers()メソッドの実装
+      - Discussion参加者 + コラボレーターを統合
       - 重複排除と優先度ソート
       - _要件: 19.6, 19.7_
 
-  - [ ] 26.3 IGitHubServiceインターフェースの更新
+  - [x] 26.3 IGitHubServiceインターフェースの更新
     - getMentionableUsers(discussionNumber?: number): Promise<MentionableUser[]>
+    - searchOrganizationMembers(query: string): Promise<MentionableUser[]>
     - _要件: 19.6_
 
-  - [ ] 26.4 WebviewProviderにメンションUI機能を追加
-    - [ ] 26.4.1 メンションドロップダウンのHTML構造追加
+  - [x] 26.4 WebviewProviderにメンションUI機能を追加
+    - [x] 26.4.1 メンションドロップダウンのHTML構造追加
       - .mention-dropdownコンテナ
       - .mention-itemリスト
       - _要件: 19.1, 19.2_
-    - [ ] 26.4.2 メンションドロップダウンのCSSスタイル追加
+    - [x] 26.4.2 メンションドロップダウンのCSSスタイル追加
       - 位置設定、ホバー効果、アバター表示
       - _要件: 19.2_
-    - [ ] 26.4.3 MentionHandlerクラスの実装（JavaScript）
+    - [x] 26.4.3 MentionHandlerクラスの実装（JavaScript）
       - @入力検出とドロップダウン表示
-      - フィルタリング機能
-      - キーボードナビゲーション（↑↓Enter Esc）
+      - フィルタリング機能（デバウンス300ms）
+      - Orgメンバー遅延検索（デバウンス500ms）
+      - キーボードナビゲーション（↑↓Enter Tab Esc）
       - _要件: 19.1, 19.3, 19.4, 19.5_
-    - [ ] 26.4.4 返信入力エリアへのメンション機能適用
+    - [x] 26.4.4 返信入力エリアへのメンション機能適用
       - コメント入力と同じ機能を提供
       - _要件: 19.8_
 
-  - [ ] 26.5 メッセージハンドラの追加
+  - [x] 26.5 メッセージハンドラの追加
     - getMentionableUsersメッセージの処理
-    - mentionableUsersレスポンスの送信
+    - searchOrgMembersメッセージの処理
+    - mentionableUsers/orgMembersレスポンスの送信
     - _要件: 19.1_
 
-  - [ ] 26.6 キャッシュ戦略の実装
+  - [x] 26.6 キャッシュ戦略の実装
     - メンション候補のキャッシュ（TTL: 10分）
-    - Discussion参加者のキャッシュ（TTL: 5分）
+    - isOrganizationRepositoryのキャッシュ（TTL: 1時間）
     - _要件: 19.7_
 
-  - [ ] 26.7 テストの追加
-    - [ ] 26.7.1 GitHubServiceのメンション候補取得テスト
-      - getDiscussionParticipantsのテスト
-      - getRepositoryCollaboratorsのテスト
-      - getOrganizationMembersのテスト
-      - getMentionableUsersの統合テスト
+  - [x] 26.7 テストの追加
+    - [x] 26.7.1 GitHubServiceのメンション候補取得テスト
+      - getMentionableUsersのテスト（6テスト）
+      - searchOrganizationMembersのテスト（4テスト）
       - _要件: 19.6_
-    - [ ] 26.7.2 重複排除と優先度ソートのテスト
+    - [x] 26.7.2 重複排除と優先度ソートのテスト
       - 同一ユーザーの重複排除
       - 優先度（participant > collaborator > org_member）のソート
       - _要件: 19.6_
-    - [ ] 26.7.3 WebviewProviderのメンションUIテスト
+    - [x] 26.7.3 WebviewProviderのメンションUIテスト
       - ドロップダウン表示のテスト
       - フィルタリングのテスト
       - テキスト挿入のテスト
       - _要件: 19.1, 19.3, 19.4_
 
-  - [ ] 26.8 チェックポイント - メンション機能の確認
-    - 全テスト通過確認
+  - [x] 26.8 チェックポイント - メンション機能の確認
+    - **336テスト全て通過**
     - @入力時のドロップダウン表示確認
     - ユーザー選択時の挿入確認
 
