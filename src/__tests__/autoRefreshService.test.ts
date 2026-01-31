@@ -139,6 +139,35 @@ describe('AutoRefreshService', () => {
         expect(refreshHandler).toHaveBeenCalledTimes(1);
       });
 
+      it('should enforce minimum interval on initial config load', () => {
+        // Set config to return interval below minimum (10 seconds)
+        mockGet.mockImplementation((key: string, defaultValue: any) => {
+          if (key === 'refreshInterval') {
+            return 10; // 10 seconds (below minimum of 30)
+          }
+          if (key === 'autoRefresh') {
+            return true;
+          }
+          return defaultValue;
+        });
+
+        const service = new AutoRefreshService();
+        service.start();
+
+        const refreshHandler = jest.fn();
+        service.onDidRefresh(refreshHandler);
+
+        // Should not fire at 10 seconds
+        jest.advanceTimersByTime(10000);
+        expect(refreshHandler).not.toHaveBeenCalled();
+
+        // Should fire at 30 seconds (minimum enforced)
+        jest.advanceTimersByTime(20000);
+        expect(refreshHandler).toHaveBeenCalledTimes(1);
+
+        service.dispose();
+      });
+
       it('should restart timer when interval changes while running', () => {
         autoRefreshService.start();
         const refreshHandler = jest.fn();

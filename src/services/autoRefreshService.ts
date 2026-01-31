@@ -6,6 +6,7 @@
  */
 
 import * as vscode from 'vscode';
+import { MIN_REFRESH_INTERVAL_MS } from '../constants';
 
 export interface IAutoRefreshService {
   start(): void;
@@ -29,7 +30,8 @@ export class AutoRefreshService implements IAutoRefreshService {
     // Load initial settings (config is in seconds, convert to ms)
     const config = vscode.workspace.getConfiguration('github-discussions');
     const intervalSeconds = config.get<number>('refreshInterval', 300); // Default 5 minutes (300 seconds)
-    this.intervalMs = intervalSeconds * 1000;
+    // Apply minimum interval guard
+    this.intervalMs = Math.max(MIN_REFRESH_INTERVAL_MS, intervalSeconds * 1000);
 
     // Listen for configuration changes
     this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
@@ -89,8 +91,8 @@ export class AutoRefreshService implements IAutoRefreshService {
    * @param intervalSeconds - Interval in seconds
    */
   setInterval(intervalSeconds: number): void {
-    // Minimum interval is 30 seconds
-    this.intervalMs = Math.max(30, intervalSeconds) * 1000;
+    // Apply minimum interval guard
+    this.intervalMs = Math.max(MIN_REFRESH_INTERVAL_MS, intervalSeconds * 1000);
 
     if (this.running) {
       // Restart with new interval
