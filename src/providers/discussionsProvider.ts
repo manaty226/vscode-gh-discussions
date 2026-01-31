@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { IGitHubService, IAuthenticationService } from '../services/interfaces';
+import { IGitHubService, IAuthenticationService, INotificationBadgeService } from '../services/interfaces';
 import { DiscussionSummary, DiscussionCategory, CategoryPaginationState, CategoryLoadState, CategoryState } from '../models';
 import { createAppError, ErrorType } from '../utils/errorUtils';
 
@@ -30,14 +30,20 @@ export class DiscussionTreeItem extends vscode.TreeItem {
     public readonly contextValue: 'category' | 'discussion' | 'loadMore' | 'loading' | 'empty' | 'error' | 'auth-required',
     public readonly discussionSummary?: DiscussionSummary,
     public readonly category?: DiscussionCategory,
-    public readonly categoryId?: string  // For loadMore item to know which category
+    public readonly categoryId?: string,  // For loadMore item to know which category
+    public readonly isUnread?: boolean  // For showing unread badge (Requirement 20)
   ) {
     super(label, collapsibleState);
 
     if (contextValue === 'discussion' && discussionSummary) {
+      // Show unread indicator at the beginning of label (Requirement 20.1, 20.2)
+      if (isUnread) {
+        this.label = `💬 ${label}`;
+      }
       this.description = `#${discussionSummary.number}`;
       // Tooltip without body (lazy loading - body not available in summary)
-      this.tooltip = `${discussionSummary.title}\n\nBy @${discussionSummary.author.login}\n${discussionSummary.commentsCount} comments`;
+      const unreadTooltip = isUnread ? '\n\n💬 新着コメントがあります' : '';
+      this.tooltip = `${discussionSummary.title}\n\nBy @${discussionSummary.author.login}\n${discussionSummary.commentsCount} comments${unreadTooltip}`;
       // クリック時はマークダウンエディタを開く（要件3.1）
       // コメントアイコン経由でWebviewを開く（要件5.1, 5.2）
       this.command = {
@@ -107,10 +113,20 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
   // Category-specific state for lazy loading (Requirement 15)
   private categoryStates: Map<string, CategoryState> = new Map();
 
+  private notificationBadgeService?: INotificationBadgeService;
+
   constructor(
     private githubService: IGitHubService,
     private authService: IAuthenticationService
   ) {}
+
+  /**
+   * Set the notification badge service for unread indicators (Requirement 20.5)
+   * This is set after initialization because of circular dependency
+   */
+  setNotificationBadgeService(service: INotificationBadgeService): void {
+    this.notificationBadgeService = service;
+  }
 
   /**
    * Refresh the tree view
@@ -430,13 +446,18 @@ export class DiscussionsProvider implements vscode.TreeDataProvider<DiscussionTr
       filteredSummaries = filteredSummaries.filter((d: DiscussionSummary) => !d.isAnswered);
     }
 
+    // Get unread IDs for showing badge (Requirement 20.5)
+    const unreadIds = this.notificationBadgeService?.getUnreadIds() || [];
+
     return filteredSummaries.map((summary: DiscussionSummary) =>
       new DiscussionTreeItem(
         summary.title,
         vscode.TreeItemCollapsibleState.None,
         'discussion',
         summary,
-        undefined
+        undefined,
+        undefined,
+        unreadIds.includes(summary.id)  // Pass isUnread flag (Requirement 20.2)
       )
     );
   }

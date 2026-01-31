@@ -62,3 +62,37 @@ export interface ICacheService {
   has(key: string): boolean;
   getOrSet<T>(key: string, factory: () => Promise<T>, ttl?: number): Promise<T>;
 }
+
+/**
+ * Notification badge service interface (Requirement 19, 20)
+ */
+export interface INotificationBadgeService {
+  /**
+   * Update the badge by checking for new comments on user's discussions
+   * Requirement 19.1, 19.2, 19.3
+   */
+  updateBadge(): Promise<void>;
+
+  /**
+   * Mark a discussion as read
+   * Requirement 19.4
+   */
+  markAsRead(discussionId: string): Promise<void>;
+
+  /**
+   * Get the list of unread discussion IDs
+   * Requirement 20.5
+   */
+  getUnreadIds(): string[];
+
+  /**
+   * Event fired when unread state changes
+   * Requirement 20.5
+   */
+  onDidChangeUnreadState: vscode.Event<void>;
+
+  /**
+   * Dispose resources
+   */
+  dispose(): void;
+}

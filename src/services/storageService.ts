@@ -75,7 +75,7 @@ export class StorageService implements IStorageService {
       // Merge stored settings with VSCode configuration and defaults
       return {
         autoRefresh: stored?.autoRefresh ?? config.get('autoRefresh', true),
-        refreshInterval: stored?.refreshInterval ?? config.get('refreshInterval', 300000),
+        refreshInterval: stored?.refreshInterval ?? config.get('refreshInterval', 300),
         showNotifications: stored?.showNotifications ?? config.get('showNotifications', true),
         defaultSort: stored?.defaultSort ?? config.get('defaultSort', 'newest'),
         defaultCategory: stored?.defaultCategory ?? config.get('defaultCategory', 'general')
@@ -86,7 +86,7 @@ export class StorageService implements IStorageService {
       // Return defaults on error
       return {
         autoRefresh: true,
-        refreshInterval: 300000,
+        refreshInterval: 300,
         showNotifications: true,
         defaultSort: 'newest',
         defaultCategory: 'general'

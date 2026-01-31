@@ -26,3 +26,9 @@ export const CACHE_KEY_MENTIONABLE_USERS = 'mentionable-users';
 
 /** Cache key prefix for discussion participants */
 export const CACHE_KEY_DISCUSSION_PARTICIPANTS = 'discussion-participants';
+
+/** Storage key for unread state (Requirement 19.5) */
+export const STORAGE_KEY_UNREAD_STATE = 'unread-state';
+
+/** Maximum number of unread discussion IDs to track (Requirement 19.6) */
+export const UNREAD_MAX_SIZE = 20;

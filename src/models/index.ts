@@ -227,3 +227,13 @@ export interface MentionableUser {
   avatarUrl: string;
   source: MentionSource;
 }
+
+/**
+ * Unread state for notification badge (Requirement 19.5)
+ */
+export interface UnreadState {
+  /** List of unread discussion IDs */
+  unreadIds: string[];
+  /** ISO 8601 timestamp of last check */
+  lastCheckedAt: string;
+}

@@ -45,10 +45,10 @@ describe('AutoRefreshService', () => {
   beforeEach(() => {
     jest.useFakeTimers();
 
-    // Default config values
+    // Default config values (refreshInterval is now in seconds)
     mockGet.mockImplementation((key: string, defaultValue: any) => {
       if (key === 'refreshInterval') {
-        return 300000; // 5 minutes
+        return 300; // 5 minutes in seconds
       }
       if (key === 'autoRefresh') {
         return true;
@@ -111,20 +111,20 @@ describe('AutoRefreshService', () => {
     });
 
     describe('setInterval', () => {
-      it('should update the refresh interval', () => {
-        autoRefreshService.setInterval(60000);
+      it('should update the refresh interval (input is seconds)', () => {
+        autoRefreshService.setInterval(60); // 60 seconds
         autoRefreshService.start();
 
         const refreshHandler = jest.fn();
         autoRefreshService.onDidRefresh(refreshHandler);
 
-        // Advance by new interval
+        // Advance by new interval (60 seconds = 60000ms)
         jest.advanceTimersByTime(60000);
         expect(refreshHandler).toHaveBeenCalledTimes(1);
       });
 
       it('should enforce minimum interval of 30 seconds', () => {
-        autoRefreshService.setInterval(1000); // Try to set 1 second
+        autoRefreshService.setInterval(1); // Try to set 1 second
         autoRefreshService.start();
 
         const refreshHandler = jest.fn();
@@ -148,10 +148,10 @@ describe('AutoRefreshService', () => {
         jest.advanceTimersByTime(100000);
         expect(refreshHandler).not.toHaveBeenCalled();
 
-        // Change interval to shorter
-        autoRefreshService.setInterval(60000);
+        // Change interval to shorter (60 seconds)
+        autoRefreshService.setInterval(60);
 
-        // Advance by new interval
+        // Advance by new interval (60 seconds = 60000ms)
         jest.advanceTimersByTime(60000);
         expect(refreshHandler).toHaveBeenCalledTimes(1);
       });
@@ -163,7 +163,7 @@ describe('AutoRefreshService', () => {
         const refreshHandler = jest.fn();
         autoRefreshService.onDidRefresh(refreshHandler);
 
-        // First interval
+        // First interval (300 seconds = 300000ms)
         jest.advanceTimersByTime(300000);
         expect(refreshHandler).toHaveBeenCalledTimes(1);
 
@@ -187,6 +187,7 @@ describe('AutoRefreshService', () => {
         const refreshHandler = jest.fn();
         autoRefreshService.onDidRefresh(refreshHandler);
 
+        // 300 seconds - 1ms = 299999ms
         jest.advanceTimersByTime(299999);
         expect(refreshHandler).not.toHaveBeenCalled();
       });
@@ -198,10 +199,10 @@ describe('AutoRefreshService', () => {
         const refreshHandler = jest.fn();
         autoRefreshService.onDidRefresh(refreshHandler);
 
-        // Simulate config change
+        // Simulate config change (now in seconds)
         mockGet.mockImplementation((key: string, defaultValue: any) => {
           if (key === 'refreshInterval') {
-            return 60000;
+            return 60; // 60 seconds
           }
           if (key === 'autoRefresh') {
             return true;
@@ -213,7 +214,7 @@ describe('AutoRefreshService', () => {
           affectsConfiguration: (section: string) => section === 'github-discussions.refreshInterval'
         });
 
-        // Advance by new interval
+        // Advance by new interval (60 seconds = 60000ms)
         jest.advanceTimersByTime(60000);
         expect(refreshHandler).toHaveBeenCalledTimes(1);
       });
@@ -256,7 +257,7 @@ describe('AutoRefreshService', () => {
             return true;
           }
           if (key === 'refreshInterval') {
-            return 300000;
+            return 300; // 300 seconds
           }
           return defaultValue;
         });
@@ -277,7 +278,7 @@ describe('AutoRefreshService', () => {
         autoRefreshService.onDidRefresh(refreshHandler);
 
         autoRefreshService.dispose();
-        jest.advanceTimersByTime(300000);
+        jest.advanceTimersByTime(300000); // 300 seconds in ms
         expect(refreshHandler).not.toHaveBeenCalled();
       });
 
@@ -298,19 +299,20 @@ describe('AutoRefreshService', () => {
      */
     it('should fire refresh events at consistent intervals', () => {
       fc.assert(fc.property(
-        fc.integer({ min: 30000, max: 600000 }), // 30 seconds to 10 minutes
+        fc.integer({ min: 30, max: 600 }), // 30 seconds to 10 minutes (in seconds)
         fc.integer({ min: 1, max: 5 }), // number of intervals to test
-        (interval, numIntervals) => {
+        (intervalSeconds, numIntervals) => {
           const service = new AutoRefreshService();
-          service.setInterval(interval);
+          service.setInterval(intervalSeconds);
           service.start();
 
           const refreshHandler = jest.fn();
           service.onDidRefresh(refreshHandler);
 
-          // Advance through multiple intervals
+          // Advance through multiple intervals (convert to ms)
+          const intervalMs = intervalSeconds * 1000;
           for (let i = 1; i <= numIntervals; i++) {
-            jest.advanceTimersByTime(interval);
+            jest.advanceTimersByTime(intervalMs);
             expect(refreshHandler).toHaveBeenCalledTimes(i);
           }
 
@@ -374,10 +376,10 @@ describe('AutoRefreshService', () => {
     it('should always stop after dispose', () => {
       fc.assert(fc.property(
         fc.boolean(),
-        fc.integer({ min: 30000, max: 300000 }),
-        (wasStarted, interval) => {
+        fc.integer({ min: 30, max: 300 }), // in seconds
+        (wasStarted, intervalSeconds) => {
           const service = new AutoRefreshService();
-          service.setInterval(interval);
+          service.setInterval(intervalSeconds);
 
           if (wasStarted) {
             service.start();

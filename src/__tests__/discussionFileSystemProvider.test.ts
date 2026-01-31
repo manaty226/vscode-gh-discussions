@@ -249,13 +249,15 @@ describe('DiscussionFileSystemProvider', () => {
         const uri = vscode.Uri.parse('ghd:///discussions/1/Test.md');
         const newContent = new TextEncoder().encode('Body');
 
-        // Access the internal emitter's fire method
-        const fireMethod = (provider as any)._onDidChangeFile.fire;
+        // Create a spy on the emitter's fire method
+        const emitter = (provider as any)._onDidChangeFile;
+        const fireSpy = jest.spyOn(emitter, 'fire');
 
         await provider.writeFile(uri, newContent, { create: false, overwrite: true });
 
         // Verify fire was called
-        expect(fireMethod).toHaveBeenCalled();
+        expect(fireSpy).toHaveBeenCalled();
+        fireSpy.mockRestore();
       });
 
       it('should show progress notification while saving', async () => {

@@ -1,6 +1,7 @@
 /**
  * GraphQL Client Tests
  * Requirements: 9.1, 9.3, 9.5 - Infrastructure layer extraction
+ * Requirements: 2.5 - Error handling with retry
  */
 
 import { GraphQLClient } from '../infrastructure/graphqlClient';
@@ -13,7 +14,12 @@ describe('GraphQLClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
     client = new GraphQLClient();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('query', () => {
@@ -70,7 +76,8 @@ describe('GraphQLClient', () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: false,
         status: 401,
-        statusText: 'Unauthorized'
+        statusText: 'Unauthorized',
+        headers: { get: () => null }
       });
 
       await expect(
@@ -123,6 +130,188 @@ describe('GraphQLClient', () => {
           })
         })
       );
+    });
+
+    it('should include Retry-After header in error message', async () => {
+      // Create a client with no retries for this test
+      const noRetryClient = new GraphQLClient(
+        'https://api.github.com/graphql',
+        'VSCode-GitHub-Discussions',
+        { maxRetries: 0 }
+      );
+
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: {
+          get: (name: string) => name === 'Retry-After' ? '60' : null
+        }
+      });
+
+      await expect(
+        noRetryClient.query('query { test }', {}, 'test-token')
+      ).rejects.toThrow('GitHub API error: 429 Too Many Requests Retry-After: 60');
+    });
+  });
+
+  describe('retry with exponential backoff', () => {
+    it('should retry on 5xx errors with exponential backoff', async () => {
+      const mockData = { repository: { id: 'R_123' } };
+
+      // First call fails with 503, second succeeds
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { get: () => null }
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: mockData })
+        });
+
+      const queryPromise = client.query('query { repository { id } }', {}, 'test-token');
+
+      // Advance timer to trigger retry (initial delay ~1000ms with jitter)
+      await jest.advanceTimersByTimeAsync(1500);
+
+      const result = await queryPromise;
+
+      expect(result).toEqual(mockData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should retry on 429 rate limit errors', async () => {
+      const mockData = { repository: { id: 'R_123' } };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+          headers: { get: () => null }
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: mockData })
+        });
+
+      const queryPromise = client.query('query { repository { id } }', {}, 'test-token');
+
+      await jest.advanceTimersByTimeAsync(1500);
+
+      const result = await queryPromise;
+
+      expect(result).toEqual(mockData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should respect Retry-After header for delay', async () => {
+      const mockData = { repository: { id: 'R_123' } };
+
+      // Return Retry-After: 5 (seconds)
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          statusText: 'Too Many Requests',
+          headers: { get: (name: string) => name === 'Retry-After' ? '5' : null }
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: mockData })
+        });
+
+      const queryPromise = client.query('query { repository { id } }', {}, 'test-token');
+
+      // Should wait for Retry-After (5000ms)
+      await jest.advanceTimersByTimeAsync(5000);
+
+      const result = await queryPromise;
+
+      expect(result).toEqual(mockData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not retry on 4xx errors (except 429)', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        headers: { get: () => null }
+      });
+
+      await expect(
+        client.query('query { repository { id } }', {}, 'test-token')
+      ).rejects.toThrow('GitHub API error: 404 Not Found');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should give up after max retries', async () => {
+      // Use real timers for this test since we need to wait for actual Promise resolution
+      jest.useRealTimers();
+
+      // Configure client with 2 retries and short delays for fast test
+      const retryClient = new GraphQLClient(
+        'https://api.github.com/graphql',
+        'VSCode-GitHub-Discussions',
+        { maxRetries: 2, initialDelayMs: 10, maxDelayMs: 50, jitterFactor: 0 }
+      );
+
+      // All calls fail with 503
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { get: () => null }
+      });
+
+      await expect(
+        retryClient.query('query { test }', {}, 'test-token')
+      ).rejects.toThrow('GitHub API error: 503 Service Unavailable');
+
+      // 1 initial + 2 retries = 3 calls
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('should use custom options for backoff', async () => {
+      const customClient = new GraphQLClient(
+        'https://api.github.com/graphql',
+        'VSCode-GitHub-Discussions',
+        {
+          maxRetries: 1,
+          initialDelayMs: 500,
+          maxDelayMs: 2000,
+          jitterFactor: 0
+        }
+      );
+
+      const mockData = { test: true };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { get: () => null }
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ data: mockData })
+        });
+
+      const queryPromise = customClient.query('query { test }', {}, 'test-token');
+
+      // With jitter=0 and initialDelay=500, first retry should be exactly at 500ms
+      await jest.advanceTimersByTimeAsync(500);
+
+      const result = await queryPromise;
+
+      expect(result).toEqual(mockData);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -109,7 +109,7 @@ Test files are located in `src/__tests__/` and follow the pattern `*.test.ts`.
 
 Extension settings (defined in package.json contributes):
 - `github-discussions.autoRefresh` - Enable automatic refresh (default: true)
-- `github-discussions.refreshInterval` - Refresh interval in ms (default: 300000)
+- `github-discussions.refreshInterval` - Refresh interval in seconds (default: 300)
 - `github-discussions.defaultSort` - Sort order: newest/oldest/top
 - `github-discussions.defaultCategory` - Default category for new discussions
 - `github-discussions.pageSize` - Number of discussions to load per page (default: 10, range: 1-100)
