@@ -143,7 +143,7 @@
           "type": "number",
           "default": 300,
           "minimum": 30,
-          "description": "Auto-refresh interval in seconds (default: 300 = 5 minutes, minimum: 30 seconds)"
+          "description": "Auto-refresh interval in seconds. Values below 30 seconds will be automatically set to 30 seconds. (default: 300 = 5 minutes)"
         },
         "github-discussions.showNotifications": {
           "type": "boolean",
