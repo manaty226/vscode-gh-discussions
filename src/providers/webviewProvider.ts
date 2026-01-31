@@ -725,6 +725,7 @@ export class DiscussionWebviewProvider {
             ${opBadge}
           </div>
           <span class="timestamp" title="${comment.createdAt.toLocaleString()}">${relativeTime}</span>
+          ${!isReply && comment.replies && comment.replies.length > 0 ? `<span class="replies-badge">${comment.replies.length} 件の返信</span>` : ''}
         </div>
         <div class="comment-content ${isTruncated ? 'truncated' : ''}" id="content-${this.escapeHtml(comment.id)}"${isTruncated ? ` data-truncated-content="${this.encodeBase64(truncated)}"` : ''}>
           ${truncated}
@@ -820,12 +821,17 @@ export class DiscussionWebviewProvider {
       --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
       --card-radius: 12px;
       --transition-speed: 0.2s;
+      --comment-bg: rgba(255, 255, 255, 0.06);
+      --reply-bg: rgba(255, 255, 255, 0.03);
+      --accent-border: var(--vscode-textLink-foreground, #3794ff);
     }
 
     /* Light theme adjustments */
     .vscode-light {
       --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       --card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
+      --comment-bg: rgba(0, 0, 0, 0.03);
+      --reply-bg: rgba(0, 0, 0, 0.015);
     }
 
     * {
@@ -856,7 +862,7 @@ export class DiscussionWebviewProvider {
     }
 
     .header-content {
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
     }
 
@@ -894,7 +900,7 @@ export class DiscussionWebviewProvider {
 
     /* Main Content */
     .main-content {
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 20px;
     }
@@ -923,19 +929,26 @@ export class DiscussionWebviewProvider {
 
     /* Comment Card - Modern Design with improved dark mode visibility */
     .comment-card {
-      background: var(--vscode-editor-inactiveSelectionBackground, rgba(255, 255, 255, 0.05));
+      background: var(--comment-bg);
       border-radius: var(--card-radius);
-      padding: 16px;
-      margin-bottom: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
       box-shadow: var(--card-shadow);
-      transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+      transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease, border-color var(--transition-speed) ease;
       border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
+      border-left: 4px solid var(--accent-border);
     }
 
     .comment-card:hover {
       transform: translateY(-2px);
       box-shadow: var(--card-shadow-hover);
       border-color: var(--vscode-focusBorder, rgba(255, 255, 255, 0.2));
+      border-left-color: var(--accent-border);
+    }
+
+    .comment-card:focus-within {
+      outline: 2px solid var(--vscode-focusBorder);
+      outline-offset: 2px;
     }
 
     .comment-header {
@@ -973,9 +986,9 @@ export class DiscussionWebviewProvider {
     .op-badge {
       background: linear-gradient(135deg, #7c8aff 0%, #9b6dff 100%);
       color: white;
-      padding: 2px 8px;
+      padding: 3px 10px;
       border-radius: 10px;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -984,13 +997,23 @@ export class DiscussionWebviewProvider {
 
     .timestamp {
       color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.6));
-      font-size: 13px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .replies-badge {
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      margin-left: auto;
     }
 
     .comment-content {
       padding-left: 46px;
-      font-size: 15px;
-      line-height: 1.7;
+      font-size: 16px;
+      line-height: 1.75;
       word-wrap: break-word;
       overflow-wrap: break-word;
       word-break: break-word;
@@ -1009,7 +1032,7 @@ export class DiscussionWebviewProvider {
       left: 46px;
       right: 0;
       height: 40px;
-      background: linear-gradient(transparent, var(--vscode-editor-inactiveSelectionBackground, rgba(30, 30, 30, 0.95)));
+      background: linear-gradient(transparent, var(--comment-bg));
     }
 
     .comment-content code {
@@ -1039,6 +1062,26 @@ export class DiscussionWebviewProvider {
       word-wrap: break-word;
       overflow-wrap: break-word;
       word-break: break-all;
+      color: var(--vscode-textLink-foreground, #3794ff);
+      text-decoration: none;
+    }
+
+    .comment-content a:hover {
+      text-decoration: underline;
+      color: var(--vscode-textLink-activeForeground, #63b3ff);
+    }
+
+    .comment-content blockquote {
+      border-left: 4px solid var(--accent-border);
+      margin: 12px 0;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 0 8px 8px 0;
+      color: var(--vscode-descriptionForeground);
+    }
+
+    .vscode-light .comment-content blockquote {
+      background: rgba(0, 0, 0, 0.02);
     }
 
     .read-more-container {
@@ -1276,12 +1319,12 @@ export class DiscussionWebviewProvider {
     }
 
     .thread-line {
-      width: 2px;
-      background: linear-gradient(to bottom, var(--vscode-textLink-foreground, #3794ff), transparent);
-      border-radius: 1px;
+      width: 3px;
+      background: linear-gradient(to bottom, var(--accent-border), transparent);
+      border-radius: 2px;
       margin-right: 16px;
       flex-shrink: 0;
-      opacity: 0.6;
+      opacity: 0.8;
     }
 
     .replies-list {
@@ -1291,9 +1334,9 @@ export class DiscussionWebviewProvider {
     }
 
     .reply-card {
-      background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+      background: var(--reply-bg);
       border-radius: 8px;
-      padding: 12px;
+      padding: 14px;
       margin-bottom: 12px;
       border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
       transition: all var(--transition-speed) ease;
@@ -1303,7 +1346,12 @@ export class DiscussionWebviewProvider {
 
     .reply-card:hover {
       border-color: var(--vscode-focusBorder);
-      background: var(--vscode-list-hoverBackground, var(--vscode-sideBar-background));
+      background: var(--vscode-list-hoverBackground, var(--reply-bg));
+    }
+
+    .reply-card:focus-within {
+      outline: 2px solid var(--vscode-focusBorder);
+      outline-offset: 2px;
     }
 
     .reply-card .avatar {
@@ -1313,7 +1361,7 @@ export class DiscussionWebviewProvider {
 
     .reply-card .comment-content {
       padding-left: 38px;
-      font-size: 14px;
+      font-size: 15px;
       word-wrap: break-word;
       overflow-wrap: break-word;
       word-break: break-word;
