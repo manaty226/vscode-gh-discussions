@@ -6,7 +6,7 @@
 
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { IGitHubService, IAuthenticationService } from '../services/interfaces';
+import { IGitHubService, IAuthenticationService, INotificationBadgeService } from '../services/interfaces';
 import { Discussion, User, DiscussionComment } from '../models';
 import { DiscussionFileSystemProvider } from './discussionFileSystemProvider';
 import { formatRelativeTime } from '../utils/dateTimeUtils';
@@ -22,7 +22,8 @@ export class DiscussionWebviewProvider {
   constructor(
     private githubService: IGitHubService,
     private authService: IAuthenticationService,
-    private context: vscode.ExtensionContext
+    private context: vscode.ExtensionContext,
+    private notificationBadgeService?: INotificationBadgeService
   ) {}
 
   /**
@@ -70,10 +71,15 @@ export class DiscussionWebviewProvider {
   }
 
   /**
-   * Show comments for a discussion in a webview panel (Requirements 5.2, 5.3, 5.4)
+   * Show comments for a discussion in a webview panel (Requirements 5.2, 5.3, 5.4, 19.4)
    */
   async showComments(discussion: Discussion): Promise<void> {
     const panelKey = `comments-${discussion.number}`;
+
+    // Mark discussion as read (Requirement 19.4)
+    if (this.notificationBadgeService) {
+      await this.notificationBadgeService.markAsRead(discussion.id);
+    }
 
     // Check if panel already exists
     const existingPanel = this.panels.get(panelKey);

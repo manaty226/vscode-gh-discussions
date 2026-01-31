@@ -8,6 +8,7 @@ import * as fc from 'fast-check';
 import { DiscussionsProvider, DiscussionTreeItem } from '../providers/discussionsProvider';
 import { GitHubService } from '../services/githubService';
 import { AuthenticationService } from '../services/authenticationService';
+import { INotificationBadgeService } from '../services/interfaces';
 import { DiscussionSummary, DiscussionSummariesPage, DiscussionCategory, User } from '../models';
 
 describe('DiscussionsProvider', () => {
@@ -1148,6 +1149,134 @@ describe('DiscussionsProvider', () => {
 
         // Should only have 1 discussion API call (for General), not 3 (for all categories)
         expect(mockGitHubService.getDiscussionSummaries).toHaveBeenCalledTimes(1);
+
+        testProvider.dispose();
+      });
+    });
+  });
+
+  describe('Unread Badge Tests (Requirement 20)', () => {
+    let mockNotificationBadgeService: jest.Mocked<INotificationBadgeService>;
+
+    beforeEach(() => {
+      mockNotificationBadgeService = {
+        updateBadge: jest.fn().mockResolvedValue(undefined),
+        markAsRead: jest.fn().mockResolvedValue(undefined),
+        getUnreadIds: jest.fn().mockReturnValue([]),
+        onDidChangeUnreadState: jest.fn(() => ({ dispose: jest.fn() })),
+        dispose: jest.fn()
+      } as any;
+    });
+
+    describe('Unread indicator in description', () => {
+      it('should show 💬 badge in label for unread discussions', async () => {
+        mockNotificationBadgeService.getUnreadIds.mockReturnValue(['D_1']); // First discussion is unread
+
+        const testProvider = new DiscussionsProvider(mockGitHubService, mockAuthService);
+        testProvider.setNotificationBadgeService(mockNotificationBadgeService);
+
+        const rootChildren = await testProvider.getChildren();
+        const generalCategory = rootChildren!.find(item => item.label === 'General');
+        const discussions = await testProvider.getChildren(generalCategory);
+
+        const unreadDiscussion = discussions!.find(d => d.discussionSummary?.id === 'D_1');
+        const readDiscussion = discussions!.find(d => d.discussionSummary?.id === 'D_2');
+
+        // Unread discussion should have 💬 at the beginning of label
+        expect(unreadDiscussion!.label).toContain('💬');
+        expect(unreadDiscussion!.label).toContain('First Discussion');
+
+        // Read discussion should NOT have 💬 in label
+        expect(readDiscussion!.label).not.toContain('💬');
+        expect(readDiscussion!.label).toBe('Second Discussion');
+
+        testProvider.dispose();
+      });
+
+      it('should show unread tooltip for unread discussions', async () => {
+        mockNotificationBadgeService.getUnreadIds.mockReturnValue(['D_1']);
+
+        const testProvider = new DiscussionsProvider(mockGitHubService, mockAuthService);
+        testProvider.setNotificationBadgeService(mockNotificationBadgeService);
+
+        const rootChildren = await testProvider.getChildren();
+        const generalCategory = rootChildren!.find(item => item.label === 'General');
+        const discussions = await testProvider.getChildren(generalCategory);
+
+        const unreadDiscussion = discussions!.find(d => d.discussionSummary?.id === 'D_1');
+
+        // Should have unread indicator in tooltip
+        expect(unreadDiscussion!.tooltip).toContain('新着コメントがあります');
+
+        testProvider.dispose();
+      });
+
+      it('should not show unread badge when no notification service is set', async () => {
+        const testProvider = new DiscussionsProvider(mockGitHubService, mockAuthService);
+        // Don't set notification badge service
+
+        const rootChildren = await testProvider.getChildren();
+        const generalCategory = rootChildren!.find(item => item.label === 'General');
+        const discussions = await testProvider.getChildren(generalCategory);
+
+        // No discussion should have 💬 badge in label
+        for (const discussion of discussions!) {
+          if (discussion.contextValue === 'discussion') {
+            expect(discussion.label).not.toContain('💬');
+          }
+        }
+
+        testProvider.dispose();
+      });
+
+      it('should update badge when unread state changes and refresh is called', async () => {
+        mockNotificationBadgeService.getUnreadIds.mockReturnValue([]);
+
+        const testProvider = new DiscussionsProvider(mockGitHubService, mockAuthService);
+        testProvider.setNotificationBadgeService(mockNotificationBadgeService);
+
+        const rootChildren = await testProvider.getChildren();
+        const generalCategory = rootChildren!.find(item => item.label === 'General');
+        let discussions = await testProvider.getChildren(generalCategory);
+
+        // Initially no unread badge
+        const discussion1 = discussions!.find(d => d.discussionSummary?.id === 'D_1');
+        expect(discussion1!.label).not.toContain('💬');
+
+        // Simulate unread state change
+        mockNotificationBadgeService.getUnreadIds.mockReturnValue(['D_1']);
+        testProvider.refresh();
+
+        // Re-fetch to see updated state
+        const newRootChildren = await testProvider.getChildren();
+        const newGeneralCategory = newRootChildren!.find(item => item.label === 'General');
+        discussions = await testProvider.getChildren(newGeneralCategory);
+
+        // Now should have unread badge
+        const updatedDiscussion1 = discussions!.find(d => d.discussionSummary?.id === 'D_1');
+        expect(updatedDiscussion1!.label).toContain('💬');
+
+        testProvider.dispose();
+      });
+    });
+
+    describe('Multiple unread discussions', () => {
+      it('should show badge for multiple unread discussions', async () => {
+        mockNotificationBadgeService.getUnreadIds.mockReturnValue(['D_1', 'D_2']);
+
+        const testProvider = new DiscussionsProvider(mockGitHubService, mockAuthService);
+        testProvider.setNotificationBadgeService(mockNotificationBadgeService);
+
+        const rootChildren = await testProvider.getChildren();
+        const generalCategory = rootChildren!.find(item => item.label === 'General');
+        const discussions = await testProvider.getChildren(generalCategory);
+
+        // Both discussions should have badge in label
+        const discussion1 = discussions!.find(d => d.discussionSummary?.id === 'D_1');
+        const discussion2 = discussions!.find(d => d.discussionSummary?.id === 'D_2');
+
+        expect(discussion1!.label).toContain('💬');
+        expect(discussion2!.label).toContain('💬');
 
         testProvider.dispose();
       });

@@ -7,7 +7,7 @@ import type { DiscussionSummary } from './models';
 import { DiscussionFileSystemProvider } from './providers/discussionFileSystemProvider';
 import { DiscussionsProvider } from './providers/discussionsProvider';
 import { DiscussionWebviewProvider } from './providers/webviewProvider';
-import { AuthenticationService, AutoRefreshService, GitHubService, StorageService } from './services';
+import { AuthenticationService, AutoRefreshService, GitHubService, StorageService, NotificationBadgeService } from './services';
 import { sanitizeFileName } from './utils/fileNameUtils';
 
 let extensionContext: vscode.ExtensionContext;
@@ -18,6 +18,7 @@ let githubService: GitHubService;
 let discussionsProvider: DiscussionsProvider;
 let fileSystemProvider: DiscussionFileSystemProvider;
 let webviewProvider: DiscussionWebviewProvider;
+let notificationBadgeService: NotificationBadgeService;
 
 export async function activate(context: vscode.ExtensionContext) {
   extensionContext = context;
@@ -68,12 +69,14 @@ async function initializeServices(context: vscode.ExtensionContext): Promise<voi
   autoRefreshService = new AutoRefreshService();
 
   // Listen for auto-refresh events
-  autoRefreshService.onDidRefresh(() => {
+  autoRefreshService.onDidRefresh(async () => {
     // Invalidate file system cache to ensure fresh data
     fileSystemProvider?.invalidateCache();
     fileSystemProvider?.notifyDiscussionsUpdated();
     // Refresh tree view
     discussionsProvider?.refresh();
+    // Update notification badge (Requirement 19.8)
+    await notificationBadgeService?.updateBadge();
   });
 
   // Listen for authentication state changes
@@ -85,9 +88,13 @@ async function initializeServices(context: vscode.ExtensionContext): Promise<voi
       discussionsProvider?.refresh();
       // Start auto-refresh when authenticated
       autoRefreshService.start();
+      // Update notification badge (Requirement 19.10)
+      await notificationBadgeService?.updateBadge();
     } else {
       // Stop auto-refresh when signed out
       autoRefreshService.stop();
+      // Clear badge when signed out
+      await notificationBadgeService?.updateBadge();
     }
   });
 
@@ -122,6 +129,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
   // Refresh command
   const refreshCommand = vscode.commands.registerCommand('github-discussions.refresh', async () => {
     discussionsProvider.refresh();
+    // Update notification badge (Requirement 19.10)
+    await notificationBadgeService?.updateBadge();
   });
 
   // Create discussion command
@@ -345,6 +354,23 @@ function registerProviders(context: vscode.ExtensionContext): void {
     showCollapseAll: true
   });
 
+  // Initialize NotificationBadgeService for activity bar badge (Requirement 19.1)
+  notificationBadgeService = new NotificationBadgeService(
+    treeView,
+    githubService,
+    authenticationService,
+    _storageService
+  );
+
+  // Set notification badge service on discussions provider for unread indicators (Requirement 20.5)
+  discussionsProvider.setNotificationBadgeService(notificationBadgeService);
+
+  // Listen for unread state changes to refresh tree view (Requirement 20.6)
+  // This will update the 💬 badge in description for unread discussions
+  const unreadStateSubscription = notificationBadgeService.onDidChangeUnreadState(() => {
+    discussionsProvider.refresh();
+  });
+
   // Initialize and register Virtual File System Provider
   fileSystemProvider = new DiscussionFileSystemProvider(githubService);
   const fsRegistration = vscode.workspace.registerFileSystemProvider(
@@ -354,9 +380,15 @@ function registerProviders(context: vscode.ExtensionContext): void {
   );
 
   // Initialize Webview Provider for viewing discussions with comments
-  webviewProvider = new DiscussionWebviewProvider(githubService, authenticationService, context);
+  // Pass notificationBadgeService for marking discussions as read (Requirement 19.4)
+  webviewProvider = new DiscussionWebviewProvider(githubService, authenticationService, context, notificationBadgeService);
 
-  context.subscriptions.push(treeView, fsRegistration);
+  context.subscriptions.push(
+    treeView,
+    fsRegistration,
+    notificationBadgeService,
+    unreadStateSubscription
+  );
 }
 
 // Export context for use in other modules

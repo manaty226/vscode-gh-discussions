@@ -6,11 +6,12 @@
  */
 
 import * as vscode from 'vscode';
+import { MIN_REFRESH_INTERVAL_MS } from '../constants';
 
 export interface IAutoRefreshService {
   start(): void;
   stop(): void;
-  setInterval(intervalMs: number): void;
+  setInterval(intervalSeconds: number): void;
   isRunning(): boolean;
   onDidRefresh: vscode.Event<void>;
   dispose(): void;
@@ -26,17 +27,19 @@ export class AutoRefreshService implements IAutoRefreshService {
   private configChangeDisposable: vscode.Disposable;
 
   constructor() {
-    // Load initial settings
+    // Load initial settings (config is in seconds, convert to ms)
     const config = vscode.workspace.getConfiguration('github-discussions');
-    this.intervalMs = config.get<number>('refreshInterval', 300000); // Default 5 minutes
+    const intervalSeconds = config.get<number>('refreshInterval', 300); // Default 5 minutes (300 seconds)
+    // Apply minimum interval guard
+    this.intervalMs = Math.max(MIN_REFRESH_INTERVAL_MS, intervalSeconds * 1000);
 
     // Listen for configuration changes
     this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('github-discussions.refreshInterval')) {
-        const newInterval = vscode.workspace
+        const newIntervalSeconds = vscode.workspace
           .getConfiguration('github-discussions')
-          .get<number>('refreshInterval', 300000);
-        this.setInterval(newInterval);
+          .get<number>('refreshInterval', 300);
+        this.setInterval(newIntervalSeconds);
       }
 
       if (e.affectsConfiguration('github-discussions.autoRefresh')) {
@@ -85,10 +88,11 @@ export class AutoRefreshService implements IAutoRefreshService {
 
   /**
    * Set a new refresh interval
+   * @param intervalSeconds - Interval in seconds
    */
-  setInterval(intervalMs: number): void {
-    // Minimum interval is 30 seconds
-    this.intervalMs = Math.max(30000, intervalMs);
+  setInterval(intervalSeconds: number): void {
+    // Apply minimum interval guard
+    this.intervalMs = Math.max(MIN_REFRESH_INTERVAL_MS, intervalSeconds * 1000);
 
     if (this.running) {
       // Restart with new interval

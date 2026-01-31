@@ -95,7 +95,7 @@ describe('StorageService', () => {
 
         expect(settings).toEqual({
           autoRefresh: true,
-          refreshInterval: 300000,
+          refreshInterval: 300,
           showNotifications: true,
           defaultSort: 'newest',
           defaultCategory: 'general'
@@ -105,7 +105,7 @@ describe('StorageService', () => {
       it('should merge stored settings with defaults', async () => {
         const storedSettings = {
           autoRefresh: false,
-          refreshInterval: 600000
+          refreshInterval: 600
         };
 
         (mockContext.globalState.get as jest.Mock).mockReturnValue(storedSettings);
@@ -114,7 +114,7 @@ describe('StorageService', () => {
 
         expect(settings).toEqual({
           autoRefresh: false,
-          refreshInterval: 600000,
+          refreshInterval: 600,
           showNotifications: true,
           defaultSort: 'newest',
           defaultCategory: 'general'
@@ -124,7 +124,7 @@ describe('StorageService', () => {
       it('should store settings updates', async () => {
         const currentSettings: ExtensionSettings = {
           autoRefresh: true,
-          refreshInterval: 300000,
+          refreshInterval: 300,
           showNotifications: true,
           defaultSort: 'newest',
           defaultCategory: 'general'
@@ -132,7 +132,7 @@ describe('StorageService', () => {
 
         const updates = {
           autoRefresh: false,
-          refreshInterval: 600000
+          refreshInterval: 600
         };
 
         (mockContext.globalState.get as jest.Mock).mockReturnValue(currentSettings);
@@ -220,7 +220,7 @@ describe('StorageService', () => {
       await fc.assert(fc.asyncProperty(
         fc.record({
           autoRefresh: fc.option(fc.boolean()),
-          refreshInterval: fc.option(fc.integer({ min: 1000, max: 3600000 })),
+          refreshInterval: fc.option(fc.integer({ min: 30, max: 3600 })),
           showNotifications: fc.option(fc.boolean()),
           defaultSort: fc.option(fc.constantFrom('newest', 'oldest', 'top')),
           defaultCategory: fc.option(fc.string({ minLength: 1, maxLength: 50 }))

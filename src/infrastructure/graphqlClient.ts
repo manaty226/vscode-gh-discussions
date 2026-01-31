@@ -7,6 +7,8 @@
 const GITHUB_GRAPHQL_API = 'https://api.github.com/graphql';
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_INITIAL_DELAY_MS = 1000;
+const DEFAULT_MAX_DELAY_MS = 30000;
+const DEFAULT_JITTER_FACTOR = 0.2; // 20% jitter
 
 export interface GraphQLResponse<T> {
   data?: T;
@@ -16,6 +18,8 @@ export interface GraphQLResponse<T> {
 export interface GraphQLClientOptions {
   maxRetries?: number;
   initialDelayMs?: number;
+  maxDelayMs?: number;
+  jitterFactor?: number;
 }
 
 export interface IGraphQLClient {
@@ -64,11 +68,46 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Calculate delay with exponential backoff and jitter
+ * @param attempt Current attempt number (0-based)
+ * @param initialDelayMs Base delay in milliseconds
+ * @param maxDelayMs Maximum delay cap
+ * @param jitterFactor Jitter factor (0-1), e.g., 0.2 for ±20%
+ * @param retryAfterMs Optional Retry-After header value in milliseconds
+ */
+function calculateBackoffDelay(
+  attempt: number,
+  initialDelayMs: number,
+  maxDelayMs: number,
+  jitterFactor: number,
+  retryAfterMs?: number
+): number {
+  // If Retry-After is provided, use it as the base delay
+  if (retryAfterMs && retryAfterMs > 0) {
+    return Math.min(retryAfterMs, maxDelayMs);
+  }
+
+  // Calculate exponential backoff: initialDelay * 2^attempt
+  const exponentialDelay = initialDelayMs * Math.pow(2, attempt);
+
+  // Apply max delay cap
+  const cappedDelay = Math.min(exponentialDelay, maxDelayMs);
+
+  // Apply jitter: randomize within ±jitterFactor range
+  const jitterRange = cappedDelay * jitterFactor;
+  const jitter = (Math.random() * 2 - 1) * jitterRange; // Random value between -jitterRange and +jitterRange
+
+  return Math.max(0, Math.floor(cappedDelay + jitter));
+}
+
 export class GraphQLClient implements IGraphQLClient {
   private readonly apiUrl: string;
   private readonly userAgent: string;
   private readonly maxRetries: number;
   private readonly initialDelayMs: number;
+  private readonly maxDelayMs: number;
+  private readonly jitterFactor: number;
 
   constructor(
     apiUrl: string = GITHUB_GRAPHQL_API,
@@ -79,10 +118,13 @@ export class GraphQLClient implements IGraphQLClient {
     this.userAgent = userAgent;
     this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.initialDelayMs = options?.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
+    this.maxDelayMs = options?.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
+    this.jitterFactor = options?.jitterFactor ?? DEFAULT_JITTER_FACTOR;
   }
 
   /**
    * Execute a GraphQL query/mutation with automatic retry on transient failures
+   * Uses exponential backoff with jitter and respects Retry-After headers
    */
   async query<T>(
     query: string,
@@ -90,6 +132,7 @@ export class GraphQLClient implements IGraphQLClient {
     token: string
   ): Promise<T> {
     let lastError: Error | undefined;
+    let retryAfterMs: number | undefined;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -97,13 +140,23 @@ export class GraphQLClient implements IGraphQLClient {
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
 
-        // Extract status code from error message if present
+        // Extract status code and retry-after from error if present
         const statusMatch = lastError.message.match(/GitHub API error: (\d+)/);
         const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : undefined;
 
+        // Extract Retry-After value if present (in seconds, convert to ms)
+        const retryAfterMatch = lastError.message.match(/Retry-After: (\d+)/);
+        retryAfterMs = retryAfterMatch ? parseInt(retryAfterMatch[1], 10) * 1000 : undefined;
+
         // Only retry on retryable errors and if we have attempts left
         if (attempt < this.maxRetries && isRetryableError(error, statusCode)) {
-          const delayMs = this.initialDelayMs * Math.pow(2, attempt);
+          const delayMs = calculateBackoffDelay(
+            attempt,
+            this.initialDelayMs,
+            this.maxDelayMs,
+            this.jitterFactor,
+            retryAfterMs
+          );
           await sleep(delayMs);
           continue;
         }
@@ -136,7 +189,10 @@ export class GraphQLClient implements IGraphQLClient {
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+      // Include Retry-After header in error message if present
+      const retryAfter = response.headers.get('Retry-After');
+      const retryAfterInfo = retryAfter ? ` Retry-After: ${retryAfter}` : '';
+      throw new Error(`GitHub API error: ${response.status} ${response.statusText}${retryAfterInfo}`);
     }
 
     const result = await response.json() as GraphQLResponse<T>;

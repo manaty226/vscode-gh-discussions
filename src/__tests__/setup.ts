@@ -23,10 +23,19 @@ const mockVscode = {
     showWarningMessage: jest.fn(),
     showInputBox: jest.fn(),
     showQuickPick: jest.fn(),
-    createTreeView: jest.fn(),
+    createTreeView: jest.fn(() => ({
+      badge: undefined,
+      onDidChangeVisibility: jest.fn(() => ({ dispose: jest.fn() })),
+      onDidChangeSelection: jest.fn(() => ({ dispose: jest.fn() })),
+      onDidExpandElement: jest.fn(() => ({ dispose: jest.fn() })),
+      onDidCollapseElement: jest.fn(() => ({ dispose: jest.fn() })),
+      reveal: jest.fn(),
+      dispose: jest.fn()
+    })),
     createWebviewPanel: jest.fn(),
     showTextDocument: jest.fn(),
-    withProgress: jest.fn((_options, task) => task({ report: jest.fn() }, { isCancellationRequested: false }))
+    withProgress: jest.fn((_options, task) => task({ report: jest.fn() }, { isCancellationRequested: false })),
+    registerFileDecorationProvider: jest.fn(() => ({ dispose: jest.fn() }))
   },
   ProgressLocation: {
     Notification: 15,
@@ -88,11 +97,22 @@ const mockVscode = {
     NoPermissions: jest.fn((message?: any) => new Error(`NoPermissions: ${message}`)),
     Unavailable: jest.fn((uri?: any) => new Error(`Unavailable: ${uri}`))
   },
-  EventEmitter: jest.fn(() => ({
-    event: jest.fn(),
-    fire: jest.fn(),
-    dispose: jest.fn()
-  })),
+  EventEmitter: class MockEventEmitter<T> {
+    listeners: ((e: T) => void)[] = [];
+
+    event = (listener: (e: T) => void) => {
+      this.listeners.push(listener);
+      return { dispose: () => { this.listeners = this.listeners.filter(l => l !== listener); } };
+    };
+
+    fire(data: T) {
+      this.listeners.forEach(l => l(data));
+    }
+
+    dispose() {
+      this.listeners = [];
+    }
+  },
   Disposable: {
     from: jest.fn()
   },
