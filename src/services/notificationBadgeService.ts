@@ -69,6 +69,7 @@ export class NotificationBadgeService implements INotificationBadgeService {
       const newUnreadIds = new Set(state.unreadIds);
 
       // Detect new comments: updatedAt > lastCheckedAt && updatedAt > createdAt (Requirement 19.3)
+      // Filter out updates caused by viewer's own comments (Requirement 20.11)
       for (const d of myDiscussions) {
         const updatedAt = new Date(d.updatedAt);
         const createdAt = new Date(d.createdAt);
@@ -77,7 +78,22 @@ export class NotificationBadgeService implements INotificationBadgeService {
         // 1. Updated after our last check
         // 2. Updated after creation (meaning comments were added, not just creation)
         if (updatedAt > lastCheckedAt && updatedAt > createdAt) {
-          newUnreadIds.add(d.id);
+          // Check recent comments for any non-viewer comments since lastCheckedAt
+          const recentComments = d.recentComments ?? [];
+          const commentsSinceLastCheck = recentComments.filter(
+            c => c.createdAt > lastCheckedAt
+          );
+
+          // If there are comments since last check, check if any are from other users
+          if (commentsSinceLastCheck.length > 0) {
+            const hasOtherPersonComment = commentsSinceLastCheck.some(c => !c.viewerDidAuthor);
+            if (hasOtherPersonComment) {
+              newUnreadIds.add(d.id);
+            }
+          } else {
+            // No recent comments data available, assume it's from others (safe default)
+            newUnreadIds.add(d.id);
+          }
         }
       }
 

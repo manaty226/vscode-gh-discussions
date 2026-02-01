@@ -748,6 +748,31 @@ VSCode上でGitHub Discussionsを管理する拡張機能をTypeScriptで実装�
     - @入力時のドロップダウン表示確認
     - ユーザー選択時の挿入確認
 
+- [x] 27. 新着コメント通知から自分のコメントを除外（要件20.11対応）
+  - [x] 27.1 モデルの更新
+    - DiscussionSummaryモデルにlatestCommentViewerDidAuthorフィールドを追加
+    - RawDiscussionSummaryにもフィールドを追加
+    - _要件: 20.11_
+
+  - [x] 27.2 GraphQLクエリの更新
+    - getDiscussionSummariesクエリにcomments(last: 1) { nodes { viewerDidAuthor } }を追加
+    - transformDiscussionSummaryで変換処理を追加
+    - _要件: 20.11_
+
+  - [x] 27.3 NotificationBadgeServiceの更新
+    - updateBadge()で自分のコメントによる更新をフィルタ
+    - latestCommentViewerDidAuthor === trueの場合は未読としない
+    - _要件: 20.11_
+
+  - [x] 27.4 テストの追加
+    - 自分のコメントがフィルタされることを検証
+    - 他人のコメントは未読として検出されることを検証
+    - _要件: 20.11_
+
+  - [x] 27.5 チェックポイント
+    - 全テスト通過確認
+    - 自分のコメント投稿後にバッジが表示されないことを確認
+
 ## 注意事項
 
 - 各タスクは特定の要件への追跡可能性のために要件を参照

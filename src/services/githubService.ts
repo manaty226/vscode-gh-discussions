@@ -163,7 +163,13 @@ interface RawDiscussionSummary {
   createdAt: string;
   updatedAt: string;
   isAnswered: boolean;
-  comments: { totalCount: number };
+  comments: {
+    totalCount: number;
+    nodes?: Array<{
+      createdAt: string;
+      viewerDidAuthor: boolean;
+    }>;
+  };
 }
 
 interface DiscussionSummariesGraphQLResponse {
@@ -269,6 +275,7 @@ export class GitHubService implements IGitHubService {
 
     // Lightweight query: no body, bodyHTML, comments content, or reactions
     // Filter to OPEN discussions only (closed discussions are excluded by default)
+    // Include recent 10 comments with createdAt and viewerDidAuthor for unread detection (Requirement 20.11)
     const query = `
       query GetDiscussionSummaries($owner: String!, $name: String!, $first: Int, $after: String, $categoryId: ID) {
         repository(owner: $owner, name: $name) {
@@ -292,8 +299,12 @@ export class GitHubService implements IGitHubService {
               createdAt
               updatedAt
               isAnswered
-              comments {
+              comments(last: 10) {
                 totalCount
+                nodes {
+                  createdAt
+                  viewerDidAuthor
+                }
               }
             }
             pageInfo {
@@ -1187,6 +1198,12 @@ export class GitHubService implements IGitHubService {
    * Transform raw API response to DiscussionSummary model (lightweight)
    */
   private transformDiscussionSummary(raw: RawDiscussionSummary): DiscussionSummary {
+    // Extract recent comments for unread detection (Requirement 20.11)
+    const recentComments = raw.comments.nodes?.map(c => ({
+      createdAt: new Date(c.createdAt),
+      viewerDidAuthor: c.viewerDidAuthor
+    }));
+
     return {
       id: raw.id,
       number: raw.number,
@@ -1203,7 +1220,8 @@ export class GitHubService implements IGitHubService {
       createdAt: new Date(raw.createdAt),
       updatedAt: new Date(raw.updatedAt),
       isAnswered: raw.isAnswered,
-      commentsCount: raw.comments.totalCount
+      commentsCount: raw.comments.totalCount,
+      recentComments
     };
   }
 

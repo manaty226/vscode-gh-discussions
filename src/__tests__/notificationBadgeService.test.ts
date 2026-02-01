@@ -7,7 +7,7 @@
 
 import { NotificationBadgeService } from '../services/notificationBadgeService';
 import { STORAGE_KEY_UNREAD_STATE, UNREAD_MAX_SIZE } from '../constants';
-import { UnreadState, DiscussionSummary, User, DiscussionCategory } from '../models';
+import { UnreadState, DiscussionSummary, User, DiscussionCategory, RecentComment } from '../models';
 import { IGitHubService, IAuthenticationService, IStorageService } from '../services/interfaces';
 
 jest.mock('vscode', () => {
@@ -79,7 +79,8 @@ describe('NotificationBadgeService', () => {
     id: string,
     authorLogin: string,
     createdAt: Date,
-    updatedAt: Date
+    updatedAt: Date,
+    recentComments?: RecentComment[]
   ): DiscussionSummary => ({
     id,
     number: parseInt(id.replace('disc-', '')),
@@ -90,7 +91,8 @@ describe('NotificationBadgeService', () => {
     createdAt,
     updatedAt,
     isAnswered: false,
-    commentsCount: 0
+    commentsCount: recentComments?.length ?? 0,
+    recentComments
   });
 
   beforeEach(() => {
@@ -187,10 +189,14 @@ describe('NotificationBadgeService', () => {
       mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
       mockGithubService.getDiscussionSummaries.mockResolvedValue({
         discussions: [
-          // User's discussion with new comment (updatedAt > lastCheckedAt && updatedAt > createdAt)
-          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo),
+          // User's discussion with new comment from someone else
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ]),
           // Other user's discussion - should be ignored
-          createMockDiscussionSummary('disc-2', 'otheruser', threeHoursAgo, oneHourAgo)
+          createMockDiscussionSummary('disc-2', 'otheruser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ])
         ],
         pageInfo: { hasNextPage: false, endCursor: null }
       });
@@ -262,7 +268,9 @@ describe('NotificationBadgeService', () => {
       // Create 25 discussions that should all be detected as new
       const discussions: DiscussionSummary[] = [];
       for (let i = 1; i <= 25; i++) {
-        discussions.push(createMockDiscussionSummary(`disc-${i}`, 'testuser', threeHoursAgo, oneHourAgo));
+        discussions.push(createMockDiscussionSummary(`disc-${i}`, 'testuser', threeHoursAgo, oneHourAgo, [
+          { createdAt: oneHourAgo, viewerDidAuthor: false }
+        ]));
       }
 
       mockGithubService.getDiscussionSummaries.mockResolvedValue({
@@ -296,8 +304,10 @@ describe('NotificationBadgeService', () => {
         discussions: [
           // Existing unread discussion (no new updates)
           createMockDiscussionSummary('disc-1', 'testuser', fourHoursAgo, threeHoursAgo),
-          // New discussion with new comment
-          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo)
+          // New discussion with new comment from someone else
+          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ])
         ],
         pageInfo: { hasNextPage: false, endCursor: null }
       });
@@ -356,6 +366,196 @@ describe('NotificationBadgeService', () => {
 
       // Should not throw
       await expect(service.updateBadge()).resolves.not.toThrow();
+    });
+
+    it('should filter out updates caused by own comments (Requirement 20.11)', async () => {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+
+      mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
+      mockGithubService.getDiscussionSummaries.mockResolvedValue({
+        discussions: [
+          // User's discussion with only own comment since lastCheckedAt (should be filtered out)
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: true }
+          ]),
+          // User's discussion with someone else's comment since lastCheckedAt (should be marked unread)
+          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ])
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      });
+
+      const existingState: UnreadState = {
+        unreadIds: [],
+        lastCheckedAt: twoHoursAgo.toISOString()
+      };
+      mockStorageService.getData.mockResolvedValue(existingState);
+
+      await service.updateBadge();
+
+      // Should only mark disc-2 as unread (disc-1 was own comment)
+      expect(mockStorageService.storeData).toHaveBeenCalledWith(
+        STORAGE_KEY_UNREAD_STATE,
+        expect.objectContaining({
+          unreadIds: ['disc-2']
+        })
+      );
+      expect(mockBadgeSetter).toHaveBeenCalledWith({
+        value: 1,
+        tooltip: '1件のDiscussionに新着コメントがあります'
+      });
+    });
+
+    it('should treat undefined recentComments as not own comment', async () => {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+
+      mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
+      mockGithubService.getDiscussionSummaries.mockResolvedValue({
+        discussions: [
+          // User's discussion with undefined recentComments (no comment yet or API didn't return)
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, undefined)
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      });
+
+      const existingState: UnreadState = {
+        unreadIds: [],
+        lastCheckedAt: twoHoursAgo.toISOString()
+      };
+      mockStorageService.getData.mockResolvedValue(existingState);
+
+      await service.updateBadge();
+
+      // Should mark as unread since we can't confirm it's own comment
+      expect(mockStorageService.storeData).toHaveBeenCalledWith(
+        STORAGE_KEY_UNREAD_STATE,
+        expect.objectContaining({
+          unreadIds: ['disc-1']
+        })
+      );
+    });
+
+    it('should not mark as unread when only own comments were added (Requirement 20.11)', async () => {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+
+      mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
+      mockGithubService.getDiscussionSummaries.mockResolvedValue({
+        discussions: [
+          // All user's discussions with own comments only since lastCheckedAt
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: true }
+          ]),
+          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: true }
+          ])
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      });
+
+      const existingState: UnreadState = {
+        unreadIds: [],
+        lastCheckedAt: twoHoursAgo.toISOString()
+      };
+      mockStorageService.getData.mockResolvedValue(existingState);
+
+      await service.updateBadge();
+
+      // Should have no unread discussions
+      expect(mockStorageService.storeData).toHaveBeenCalledWith(
+        STORAGE_KEY_UNREAD_STATE,
+        expect.objectContaining({
+          unreadIds: []
+        })
+      );
+      expect(mockBadgeSetter).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should detect unread when latest is own comment but earlier has other comment (Requirement 20.11)', async () => {
+      // Edge case: 最新1件が自分のコメント、2件目が他人のコメント
+      const now = new Date();
+      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+
+      mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
+      mockGithubService.getDiscussionSummaries.mockResolvedValue({
+        discussions: [
+          // 最新は自分のコメントだが、その前に他人のコメントがある（両方lastCheckedAt後）
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, thirtyMinutesAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false },      // 他人のコメント
+            { createdAt: thirtyMinutesAgo, viewerDidAuthor: true }  // 自分のコメント（最新）
+          ])
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      });
+
+      const existingState: UnreadState = {
+        unreadIds: [],
+        lastCheckedAt: twoHoursAgo.toISOString()
+      };
+      mockStorageService.getData.mockResolvedValue(existingState);
+
+      await service.updateBadge();
+
+      // 他人のコメントがあるので未読として扱う
+      expect(mockStorageService.storeData).toHaveBeenCalledWith(
+        STORAGE_KEY_UNREAD_STATE,
+        expect.objectContaining({
+          unreadIds: ['disc-1']
+        })
+      );
+      expect(mockBadgeSetter).toHaveBeenCalledWith({
+        value: 1,
+        tooltip: '1件のDiscussionに新着コメントがあります'
+      });
+    });
+
+    it('should ignore comments older than lastCheckedAt (Requirement 20.11)', async () => {
+      // コメントがlastCheckedAtより前の場合は無視する
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+
+      mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
+      mockGithubService.getDiscussionSummaries.mockResolvedValue({
+        discussions: [
+          // updatedAtはoneHourAgoだが、コメントはlastCheckedAt（twoHoursAgo）より前
+          createMockDiscussionSummary('disc-1', 'testuser', fourHoursAgo, oneHourAgo, [
+            { createdAt: threeHoursAgo, viewerDidAuthor: false }  // lastCheckedAtより前
+          ])
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null }
+      });
+
+      const existingState: UnreadState = {
+        unreadIds: [],
+        lastCheckedAt: twoHoursAgo.toISOString()
+      };
+      mockStorageService.getData.mockResolvedValue(existingState);
+
+      await service.updateBadge();
+
+      // コメントがlastCheckedAtより前なので、recentCommentsはあるがfilter後は0件
+      // この場合、サービスは「recentCommentsがない」扱いになり未読にする（安全デフォルト）
+      expect(mockStorageService.storeData).toHaveBeenCalledWith(
+        STORAGE_KEY_UNREAD_STATE,
+        expect.objectContaining({
+          unreadIds: ['disc-1']
+        })
+      );
     });
   });
 
@@ -443,8 +643,12 @@ describe('NotificationBadgeService', () => {
       mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
       mockGithubService.getDiscussionSummaries.mockResolvedValue({
         discussions: [
-          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo),
-          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo)
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ]),
+          createMockDiscussionSummary('disc-2', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ])
         ],
         pageInfo: { hasNextPage: false, endCursor: null }
       });
@@ -476,7 +680,9 @@ describe('NotificationBadgeService', () => {
       mockAuthService.getCurrentUser.mockResolvedValue(createMockUser('testuser'));
       mockGithubService.getDiscussionSummaries.mockResolvedValue({
         discussions: [
-          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo)
+          createMockDiscussionSummary('disc-1', 'testuser', threeHoursAgo, oneHourAgo, [
+            { createdAt: oneHourAgo, viewerDidAuthor: false }
+          ])
         ],
         pageInfo: { hasNextPage: false, endCursor: null }
       });
