@@ -163,7 +163,10 @@ interface RawDiscussionSummary {
   createdAt: string;
   updatedAt: string;
   isAnswered: boolean;
-  comments: { totalCount: number };
+  comments: {
+    totalCount: number;
+    nodes?: Array<{ viewerDidAuthor: boolean }>;
+  };
 }
 
 interface DiscussionSummariesGraphQLResponse {
@@ -269,6 +272,7 @@ export class GitHubService implements IGitHubService {
 
     // Lightweight query: no body, bodyHTML, comments content, or reactions
     // Filter to OPEN discussions only (closed discussions are excluded by default)
+    // Include viewerDidAuthor for latest comment to filter own comments from unread (Requirement 20.11)
     const query = `
       query GetDiscussionSummaries($owner: String!, $name: String!, $first: Int, $after: String, $categoryId: ID) {
         repository(owner: $owner, name: $name) {
@@ -292,8 +296,11 @@ export class GitHubService implements IGitHubService {
               createdAt
               updatedAt
               isAnswered
-              comments {
+              comments(last: 1) {
                 totalCount
+                nodes {
+                  viewerDidAuthor
+                }
               }
             }
             pageInfo {
@@ -1187,6 +1194,9 @@ export class GitHubService implements IGitHubService {
    * Transform raw API response to DiscussionSummary model (lightweight)
    */
   private transformDiscussionSummary(raw: RawDiscussionSummary): DiscussionSummary {
+    // Extract viewerDidAuthor from latest comment if available (Requirement 20.11)
+    const latestCommentViewerDidAuthor = raw.comments.nodes?.[0]?.viewerDidAuthor;
+
     return {
       id: raw.id,
       number: raw.number,
@@ -1203,7 +1213,8 @@ export class GitHubService implements IGitHubService {
       createdAt: new Date(raw.createdAt),
       updatedAt: new Date(raw.updatedAt),
       isAnswered: raw.isAnswered,
-      commentsCount: raw.comments.totalCount
+      commentsCount: raw.comments.totalCount,
+      latestCommentViewerDidAuthor
     };
   }
 

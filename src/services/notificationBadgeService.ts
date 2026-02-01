@@ -69,6 +69,7 @@ export class NotificationBadgeService implements INotificationBadgeService {
       const newUnreadIds = new Set(state.unreadIds);
 
       // Detect new comments: updatedAt > lastCheckedAt && updatedAt > createdAt (Requirement 19.3)
+      // Filter out updates caused by viewer's own comments (Requirement 20.11)
       for (const d of myDiscussions) {
         const updatedAt = new Date(d.updatedAt);
         const createdAt = new Date(d.createdAt);
@@ -76,7 +77,12 @@ export class NotificationBadgeService implements INotificationBadgeService {
         // Only consider as new if:
         // 1. Updated after our last check
         // 2. Updated after creation (meaning comments were added, not just creation)
+        // 3. Latest comment was NOT authored by the viewer (skip own comments)
         if (updatedAt > lastCheckedAt && updatedAt > createdAt) {
+          // Skip if the latest comment was authored by the current user
+          if (d.latestCommentViewerDidAuthor === true) {
+            continue;
+          }
           newUnreadIds.add(d.id);
         }
       }

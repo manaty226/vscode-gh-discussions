@@ -101,6 +101,11 @@ export interface DiscussionSummary {
   updatedAt: Date;
   isAnswered: boolean;
   commentsCount: number;
+  /**
+   * Whether the latest comment was authored by the viewer (current user)
+   * Used to filter out own comments from unread notifications (Requirement 20.11)
+   */
+  latestCommentViewerDidAuthor?: boolean;
 }
 
 /**
