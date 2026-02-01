@@ -77,13 +77,23 @@ export class NotificationBadgeService implements INotificationBadgeService {
         // Only consider as new if:
         // 1. Updated after our last check
         // 2. Updated after creation (meaning comments were added, not just creation)
-        // 3. Latest comment was NOT authored by the viewer (skip own comments)
         if (updatedAt > lastCheckedAt && updatedAt > createdAt) {
-          // Skip if the latest comment was authored by the current user
-          if (d.latestCommentViewerDidAuthor === true) {
-            continue;
+          // Check recent comments for any non-viewer comments since lastCheckedAt
+          const recentComments = d.recentComments ?? [];
+          const commentsSinceLastCheck = recentComments.filter(
+            c => c.createdAt > lastCheckedAt
+          );
+
+          // If there are comments since last check, check if any are from other users
+          if (commentsSinceLastCheck.length > 0) {
+            const hasOtherPersonComment = commentsSinceLastCheck.some(c => !c.viewerDidAuthor);
+            if (hasOtherPersonComment) {
+              newUnreadIds.add(d.id);
+            }
+          } else {
+            // No recent comments data available, assume it's from others (safe default)
+            newUnreadIds.add(d.id);
           }
-          newUnreadIds.add(d.id);
         }
       }
 

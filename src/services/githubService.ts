@@ -165,7 +165,10 @@ interface RawDiscussionSummary {
   isAnswered: boolean;
   comments: {
     totalCount: number;
-    nodes?: Array<{ viewerDidAuthor: boolean }>;
+    nodes?: Array<{
+      createdAt: string;
+      viewerDidAuthor: boolean;
+    }>;
   };
 }
 
@@ -272,7 +275,7 @@ export class GitHubService implements IGitHubService {
 
     // Lightweight query: no body, bodyHTML, comments content, or reactions
     // Filter to OPEN discussions only (closed discussions are excluded by default)
-    // Include viewerDidAuthor for latest comment to filter own comments from unread (Requirement 20.11)
+    // Include recent 10 comments with createdAt and viewerDidAuthor for unread detection (Requirement 20.11)
     const query = `
       query GetDiscussionSummaries($owner: String!, $name: String!, $first: Int, $after: String, $categoryId: ID) {
         repository(owner: $owner, name: $name) {
@@ -296,9 +299,10 @@ export class GitHubService implements IGitHubService {
               createdAt
               updatedAt
               isAnswered
-              comments(last: 1) {
+              comments(last: 10) {
                 totalCount
                 nodes {
+                  createdAt
                   viewerDidAuthor
                 }
               }
@@ -1194,8 +1198,11 @@ export class GitHubService implements IGitHubService {
    * Transform raw API response to DiscussionSummary model (lightweight)
    */
   private transformDiscussionSummary(raw: RawDiscussionSummary): DiscussionSummary {
-    // Extract viewerDidAuthor from latest comment if available (Requirement 20.11)
-    const latestCommentViewerDidAuthor = raw.comments.nodes?.[0]?.viewerDidAuthor;
+    // Extract recent comments for unread detection (Requirement 20.11)
+    const recentComments = raw.comments.nodes?.map(c => ({
+      createdAt: new Date(c.createdAt),
+      viewerDidAuthor: c.viewerDidAuthor
+    }));
 
     return {
       id: raw.id,
@@ -1214,7 +1221,7 @@ export class GitHubService implements IGitHubService {
       updatedAt: new Date(raw.updatedAt),
       isAnswered: raw.isAnswered,
       commentsCount: raw.comments.totalCount,
-      latestCommentViewerDidAuthor
+      recentComments
     };
   }
 

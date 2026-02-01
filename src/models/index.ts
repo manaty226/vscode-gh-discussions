@@ -87,6 +87,14 @@ export interface CategoryState {
 }
 
 /**
+ * Recent comment info for unread detection (Requirement 20.11)
+ */
+export interface RecentComment {
+  createdAt: Date;
+  viewerDidAuthor: boolean;
+}
+
+/**
  * Lightweight discussion model for list display (lazy loading)
  * Does not include body, bodyHTML, comments, or reactions
  */
@@ -102,10 +110,10 @@ export interface DiscussionSummary {
   isAnswered: boolean;
   commentsCount: number;
   /**
-   * Whether the latest comment was authored by the viewer (current user)
+   * Recent comments (last 10) for detecting unread state
    * Used to filter out own comments from unread notifications (Requirement 20.11)
    */
-  latestCommentViewerDidAuthor?: boolean;
+  recentComments?: RecentComment[];
 }
 
 /**
