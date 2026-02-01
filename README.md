@@ -10,12 +10,16 @@ View, create, edit, and manage GitHub Discussions directly within VS Code using 
 
 ## Features
 
-- **Sidebar Tree View** - Browse discussions organized by category
+- **Sidebar Tree View** - Browse discussions organized by category with lazy loading
 - **Virtual File System** - Edit discussions as markdown files (`ghd://` URI scheme)
 - **Rich Preview** - View discussions with full markdown rendering and Mermaid diagram support
 - **Create & Edit** - Create new discussions and edit existing ones without leaving VS Code
-- **Comments View** - View and navigate discussion comments
+- **Comments View** - View and navigate discussion comments with @mention support
+- **@Mention Support** - Mention users in comments with autocomplete suggestions
+- **Notification Badge** - See unread comment notifications (excludes your own comments)
+- **Progress Indicator** - Visual feedback when saving discussions
 - **Auto Refresh** - Automatically sync with GitHub at configurable intervals
+- **Dark Mode** - Optimized visibility for both light and dark themes
 - **Open in Browser** - Quick access to discussions on GitHub
 
 ## Getting Started
@@ -52,7 +56,7 @@ This extension contributes the following settings:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `github-discussions.autoRefresh` | `true` | Automatically refresh discussions |
-| `github-discussions.refreshInterval` | `300000` | Refresh interval in milliseconds (default: 5 minutes) |
+| `github-discussions.refreshInterval` | `300` | Auto-refresh interval in seconds (minimum: 30, default: 5 minutes) |
 | `github-discussions.showNotifications` | `true` | Show notifications for discussion updates |
 | `github-discussions.defaultSort` | `"newest"` | Default sort order (`newest`, `oldest`, `top`) |
 | `github-discussions.defaultCategory` | `"general"` | Default category for new discussions |
@@ -63,7 +67,7 @@ This extension contributes the following settings:
 ```json
 {
   "github-discussions.autoRefresh": true,
-  "github-discussions.refreshInterval": 600000,
+  "github-discussions.refreshInterval": 600,
   "github-discussions.defaultSort": "top",
   "github-discussions.defaultCategory": "Q&A",
   "github-discussions.pageSize": 20
@@ -175,7 +179,28 @@ src/
 
 ## Release Notes
 
-### 2.0.0
+### 0.5.0
+
+- Exclude your own comments from notification badge
+- Improved visibility for comments and replies in WebView
+- Enhanced dark mode support
+
+### 0.4.0
+
+- @mention support with autocomplete in comments and replies
+- Mention suggestions include discussion participants, collaborators, and org members
+
+### 0.3.0
+
+- Progress indicator when saving discussions
+
+### 0.2.0
+
+- Lazy loading for categories with pagination support
+- Filter to show only OPEN discussions
+- QuickPick selection for discussions from command palette
+
+### 0.1.0
 
 - Virtual File System support for editing discussions
 - Rich markdown preview with Mermaid diagram support
